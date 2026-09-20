@@ -107,10 +107,15 @@ export function parseOverpass(json, tun = DEFAULTS) {
   return ways;
 }
 
-// Share of ways per tier, for the setup screen ("limits known on 84% of roads here").
+// Share of streets per tier, for the setup screen ("limits known on 84% of streets here").
+// Service roads (car parks, driveways) are left out: nobody commutes along them and few are signed.
 export function coverage(ways, tun = DEFAULTS) {
-  const out = { tagged: 0, assumed: 0, unknown: 0, total: ways.length };
-  for (const way of ways) out[wayLimit(way, tun)?.tier || 'unknown']++;
+  const out = { tagged: 0, assumed: 0, unknown: 0, total: 0 };
+  for (const way of ways) {
+    if (way.highway === 'service') continue;
+    out[wayLimit(way, tun)?.tier || 'unknown']++;
+    out.total++;
+  }
   return out;
 }
 

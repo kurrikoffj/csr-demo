@@ -1,0 +1,329 @@
+/* The interface is made of road signs: flat traffic colours, DIN lettering, plates with an inset border.
+   The whole screen changes colour with the state of the drive so it reads from the corner of an eye. */
+
+:root {
+  --asphalt: #15171a;
+  --asphalt-2: #22262b;
+  --asphalt-3: #363c44;
+  --sign-white: #f4f5f2;
+  --sign-red: #c4161c;
+  --sign-blue: #0f4c8a;
+  --sign-yellow: #f5b800;
+  --sign-green: #1f7a4d;
+  --marking: #9ba2ab;
+
+  --display: "DIN Condensed", "DIN Alternate", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Avenir Next", Avenir, system-ui, sans-serif;
+  --data: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --gutter: 16px;
+  --tabs-h: 58px;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--asphalt);
+  color: var(--sign-white);
+  font: 16px/1.45 var(--body);
+  transition: background-color 0.15s linear;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+body[data-state="armed"] { background: var(--sign-blue); }
+body[data-state="over"] { background: var(--sign-red); }
+
+h1, h2, h3, p { margin: 0; }
+a { color: inherit; }
+button, input, select { font: inherit; color: inherit; }
+
+:focus-visible { outline: 3px solid var(--sign-yellow); outline-offset: 3px; }
+
+#view {
+  padding: calc(env(safe-area-inset-top) + var(--gutter)) var(--gutter)
+    calc(var(--tabs-h) + env(safe-area-inset-bottom) + var(--gutter));
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+body.driving #view { padding-bottom: calc(env(safe-area-inset-bottom) + var(--gutter)); max-width: none; }
+body.driving #tabs { display: none; }
+
+/* ---------- Lettering ---------- */
+
+.display {
+  font-family: var(--display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 0.95;
+}
+
+.eyebrow {
+  font: 600 12px/1.2 var(--body);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--marking);
+}
+
+.muted { color: var(--marking); }
+.data { font-family: var(--data); font-variant-numeric: tabular-nums; }
+
+h1.display { font-size: 40px; }
+h2.display { font-size: 26px; margin: 28px 0 10px; }
+
+/* Digits in fixed cells so a running clock does not shimmy. */
+.digits { display: inline-flex; align-items: baseline; }
+.digits > span { display: inline-block; width: 0.43em; text-align: center; }
+.digits > span.sep { width: 0.22em; }
+
+/* ---------- Sign plates ---------- */
+
+.plate {
+  --plate: var(--sign-blue);
+  --ink: var(--sign-white);
+  background: var(--plate);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  box-shadow: 0 0 0 4px var(--plate);
+  margin: 4px;
+  padding: 14px 16px;
+}
+
+.plate.white { --plate: var(--sign-white); --ink: var(--asphalt); }
+.plate.yellow { --plate: var(--sign-yellow); --ink: var(--asphalt); }
+.plate.green { --plate: var(--sign-green); }
+.plate.red { --plate: var(--sign-red); }
+.plate.dark { --plate: var(--asphalt-2); --ink: var(--sign-white); border-color: var(--asphalt-3); }
+
+button.plate, a.plate {
+  display: block;
+  width: calc(100% - 8px);
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  font: 700 22px/1 var(--display);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 16px 16px 12px;
+}
+
+button.plate.small, a.plate.small { font-size: 17px; padding: 11px 12px 8px; border-width: 2px; }
+button.plate:active, a.plate:active { transform: translateY(1px); filter: brightness(0.92); }
+button.plate:disabled { opacity: 0.45; cursor: default; }
+
+.row { display: flex; gap: 10px; align-items: stretch; }
+.row > * { flex: 1; }
+.stack { display: grid; gap: 12px; }
+.gap-top { margin-top: 18px; }
+
+/* The route as a direction sign. */
+.route-sign { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.route-sign .display { font-size: 34px; }
+.route-sign .arrow { padding: 0 0.2em; }
+
+/* ---------- Speed limit roundel ---------- */
+
+.roundel {
+  --d: 96px;
+  width: var(--d);
+  height: var(--d);
+  flex: none;
+  border-radius: 50%;
+  background: var(--sign-white);
+  border: calc(var(--d) * 0.13) solid var(--sign-red);
+  color: #111;
+  display: grid;
+  place-items: center;
+  font: 700 calc(var(--d) * 0.5) / 1 var(--display);
+  padding-top: calc(var(--d) * 0.07); /* DIN Condensed sits high in its box */
+  letter-spacing: -0.01em;
+}
+
+.roundel[data-tier="assumed"] { border-style: dashed; }
+.roundel[data-tier="unknown"] { border-color: var(--asphalt-3); background: var(--asphalt-2); color: var(--marking); }
+
+/* ---------- Arm: a round blue mandatory sign ---------- */
+
+.arm {
+  width: min(62vw, 250px);
+  aspect-ratio: 1;
+  margin: 26px auto 10px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--sign-blue);
+  border: 5px solid var(--sign-white);
+  box-shadow: 0 0 0 6px var(--sign-blue);
+  cursor: pointer;
+  padding: 0;
+}
+
+.arm svg { width: 46%; height: auto; fill: var(--sign-white); }
+.arm:active { transform: scale(0.98); }
+.arm:disabled { opacity: 0.4; }
+.arm-label { text-align: center; font-size: 30px; }
+
+/* ---------- Drive HUD ---------- */
+
+.hud {
+  min-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2 * var(--gutter));
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  gap: 14px;
+}
+
+.hud-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 12px; }
+.hud-top .display { font-size: 26px; white-space: nowrap; }
+.hud-top .data { font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.85; }
+
+.hud-body { display: grid; align-content: center; gap: 10px; }
+
+.hud-main {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-content: center;
+  gap: 7vw;
+}
+
+.hud-main .roundel { --d: min(38vw, 190px); }
+.speed { text-align: right; }
+.speed .display { font-size: min(44vw, 230px); line-height: 0.8; padding-top: 0.12em; }
+.speed .unit { font-size: 18px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.8; }
+
+body[data-state="over"] .hud-main .roundel { animation: pulse 0.6s ease-in-out infinite alternate; }
+@keyframes pulse { to { transform: scale(1.08); } }
+@media (prefers-reduced-motion: reduce) {
+  body[data-state="over"] .hud-main .roundel { animation: none; outline: 6px solid var(--sign-white); }
+  body { transition: none; }
+}
+
+.hud-road { text-align: center; font-size: 18px; min-height: 1.5em; opacity: 0.9; }
+
+.hud-clock { text-align: center; }
+.hud-clock .display { font-size: min(30vw, 150px); line-height: 0.85; padding-top: 0.1em; }
+
+.hud-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.hud-foot button { width: auto; flex: none; }
+
+/* Disqualification clock: hazard stripes filling toward the end. */
+.dq-bar { height: 22px; border: 2px solid var(--sign-white); border-radius: 6px; overflow: hidden; visibility: hidden; }
+.dq-bar.on { visibility: visible; }
+.dq-bar > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: repeating-linear-gradient(-45deg, var(--sign-yellow) 0 12px, #111 12px 24px);
+  transition: width 0.25s linear;
+}
+
+.banner { text-align: center; font-size: 24px; padding: 10px 12px 6px; }
+
+.armed-title { font-size: min(30vw, 150px); text-align: center; line-height: 0.85; padding-top: 0.1em; }
+.armed-note { text-align: center; font-size: 20px; max-width: 26em; margin: 0 auto; }
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .hud { grid-template-rows: auto 1fr auto; grid-template-columns: 1.2fr 1fr; column-gap: 4vw; }
+  .hud-top, .hud-foot, .dq-bar, .banner { grid-column: 1 / -1; }
+  .hud-main .roundel { --d: min(24vw, 36vh); }
+  .speed .display { font-size: min(26vw, 46vh); }
+  .hud-clock .display { font-size: min(18vw, 34vh); }
+  .hud-road { grid-column: 1; }
+  .hud-clock { grid-column: 2; grid-row: 2 / span 2; align-self: center; }
+}
+
+/* ---------- Lists, tables, forms ---------- */
+
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; }
+.kv dt { color: var(--marking); }
+.kv dd { margin: 0; text-align: right; font-family: var(--data); }
+
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font: 600 12px/1.2 var(--body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--marking); }
+th, td { padding: 9px 6px; border-bottom: 1px solid var(--asphalt-3); }
+td.num, th.num { text-align: right; font-family: var(--data); font-variant-numeric: tabular-nums; }
+
+.run-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 12px 6px; border-bottom: 1px solid var(--asphalt-3); text-decoration: none; }
+.run-row .time { font: 700 28px/1 var(--display); padding-top: 4px; grid-row: span 2; align-self: center; }
+
+.tag {
+  display: inline-block;
+  font: 700 13px/1 var(--display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 5px 7px 2px;
+  border-radius: 4px;
+  background: var(--asphalt-3);
+  vertical-align: middle;
+}
+.tag.best { background: var(--sign-green); }
+.tag.dq { background: var(--sign-yellow); color: #111; }
+.tag.bad { background: var(--sign-red); }
+
+.seg { display: flex; border: 2px solid var(--sign-white); border-radius: 10px; overflow: hidden; }
+.seg button { flex: 1; background: none; border: 0; padding: 11px 8px 8px; font: 700 18px/1 var(--display); text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--sign-white); color: var(--asphalt); }
+
+label.field { display: grid; grid-template-columns: 1fr 96px; gap: 4px 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--asphalt-3); }
+label.field small { grid-column: 1 / -1; color: var(--marking); }
+label.field.wide { grid-template-columns: 1fr; }
+
+input[type="number"], input[type="text"], input[type="time"], select {
+  width: 100%;
+  background: var(--asphalt-2);
+  border: 2px solid var(--asphalt-3);
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-family: var(--data);
+}
+input[type="range"] { width: 100%; accent-color: var(--sign-blue); }
+input[type="checkbox"] { width: 24px; height: 24px; accent-color: var(--sign-blue); justify-self: end; }
+
+.map { height: 46vh; min-height: 280px; border-radius: 12px; overflow: hidden; border: 3px solid var(--asphalt-3); background: var(--asphalt-2); }
+.map.short { height: 34vh; min-height: 220px; }
+.leaflet-container { font-family: var(--body); background: #dfe3e6; }
+.pin { width: 30px; height: 30px; border-radius: 50%; border: 3px solid var(--sign-white); display: grid; place-items: center; font: 700 17px/1 var(--display); padding-top: 3px; color: var(--sign-white); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); }
+.pin.a { background: var(--sign-blue); }
+.pin.b { background: #111; }
+
+.notice { border-left: 5px solid var(--sign-yellow); padding: 8px 12px; background: var(--asphalt-2); border-radius: 0 8px 8px 0; }
+
+.finish-time { font-size: min(34vw, 170px); line-height: 0.85; padding-top: 0.12em; text-align: center; }
+
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--marking); margin-top: 8px; }
+.linklike { background: none; border: 0; padding: 0; color: var(--sign-white); text-decoration: underline; cursor: pointer; font-size: 13px; }
+.legend i { display: inline-block; width: 18px; height: 5px; border-radius: 3px; vertical-align: middle; margin-right: 5px; }
+
+/* ---------- Tabs: a strip of direction signs ---------- */
+
+#tabs {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: calc(var(--tabs-h) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--asphalt-2);
+  border-top: 2px solid var(--asphalt-3);
+  z-index: 1000;
+}
+
+#tabs a {
+  display: grid;
+  place-items: center;
+  text-decoration: none;
+  font: 700 18px/1 var(--display);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding-top: 5px;
+  color: var(--marking);
+}
+
+#tabs a[aria-current="page"] { color: var(--sign-white); box-shadow: inset 0 4px 0 var(--sign-white); }

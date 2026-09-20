@@ -7,6 +7,7 @@ Browser demo of a solo commute time-trial: drive A→B on real roads, beat your 
 - **No framework, no build step, no runtime dependencies.** The folder is the site. Plain ES modules.
 - `src/` is pure logic with no DOM or browser APIs, so it runs under Node tests. Browser code lives in `ui/` and `app.js`.
 - Every threshold lives in `src/tunables.js` and is editable in the Tuning screen. No magic numbers elsewhere.
+- **No synthesized voice.** Cues are plain tones only (owner's call after hearing the voice). Anything the driver must know beyond a tone goes on the summary screen.
 - A false disqualification is the worst bug; false leniency is harmless. Ambiguity resolves to the higher limit.
 
 ## Commands

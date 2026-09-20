@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { distanceM, bearingDeg, angleDiffDeg, projectOnSegment, circleCrossing, bboxAround } from '../src/geo.js';
 import { bucketFor } from '../src/buckets.js';
 import { limitFromTags, wayLimit, overpassQuery } from '../src/osm.js';
-import { formatDuration, formatDelta, spokenDuration, finishPhrase } from '../src/phrases.js';
+import { formatDuration, formatDelta, standingText } from '../src/phrases.js';
 import { syntheticDrive } from '../src/replay.js';
 import { route } from '../src/router.js';
 import { xy, town, COMMUTE } from './helpers.js';
@@ -93,20 +93,7 @@ test('phrases: durations and deltas', () => {
   assert.equal(formatDuration(3725), '1:02:05');
   assert.equal(formatDelta(-18.4), '−0:18');
   assert.equal(formatDelta(42), '+0:42');
-  assert.equal(spokenDuration(61), '1 minute 1 second');
-  assert.equal(spokenDuration(120), '2 minutes');
-});
-
-test('phrases: what the voice says at the finish', () => {
-  const run = { durationS: 1450, bucket: 'wd_am', flags: {} };
-  assert.match(finishPhrase(run, { firstInBucket: true }), /First clean run for weekday am rush/);
-  assert.match(
-    finishPhrase(run, { isBest: true, deltaS: -18, standing: { faster: 8, total: 8 } }),
-    /New personal best.*by 18 seconds\. Faster than 8 of your 8 earlier runs/,
-  );
-  assert.match(finishPhrase(run, { isBest: false, deltaS: 42 }), /42 seconds behind/);
-  assert.match(finishPhrase({ ...run, disqualified: true }, {}), /disqualified/);
-  assert.match(finishPhrase({ ...run, flags: { gap: true } }, {}), /GPS paused/);
+  assert.equal(standingText({ faster: 6, total: 8 }), 'Faster than 6 of 8 of your runs in this bucket');
 });
 
 test('replay: synthetic drive covers the path at the given speed', () => {
