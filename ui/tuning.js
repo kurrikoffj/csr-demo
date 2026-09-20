@@ -120,7 +120,7 @@ export function mountTuning(container, app) {
           h('option', { value: 'mix', selected: s.audioMode !== 'takeover' }, 'Over my music'),
           h('option', { value: 'takeover', selected: s.audioMode === 'takeover' }, 'Always audible')),
         h('small', {}, '“Over my music” follows the iPhone ringer switch: with the ringer off, cues are silent. “Always audible” ignores the switch but may pause other audio. Tap a sound below to check.')),
-      h('div', { class: 'row' }, [['go', 'Start'], ['warning', 'Warning'], ['dq', 'Disqualified'], ['finish', 'Finish'], ['best', 'New best']].map(([tone, label]) =>
+      h('div', { class: 'pads' }, [['go', 'Start'], ['warning', 'Warning'], ['dq', 'Disqualified'], ['finish', 'Finish'], ['best', 'New best'], ['gap', 'GPS paused']].map(([tone, label]) =>
         h('button', { class: 'plate dark small', onclick: () => { app.cues.unlock(); app.cues.play(tone); } }, label))),
 
       GROUPS.map(([title, fields]) => [h('h2', { class: 'display' }, title), fields.map(numberField)]),

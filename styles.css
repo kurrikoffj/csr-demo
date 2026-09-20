@@ -120,7 +120,10 @@ button.plate:disabled { opacity: 0.45; cursor: default; }
 
 .row { display: flex; gap: 10px; align-items: stretch; }
 .row > * { flex: 1; }
-.stack { display: grid; gap: 12px; }
+.stack { display: grid; gap: 12px; min-width: 0; }
+.stack > * { min-width: 0; }
+.pads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 2px; }
+.pads > button.plate { width: auto; }
 .gap-top { margin-top: 18px; }
 
 /* The route as a direction sign. */
@@ -230,13 +233,29 @@ body[data-state="over"] .hud-main .roundel { animation: pulse 0.6s ease-in-out i
 .armed-note { text-align: center; font-size: 20px; max-width: 26em; margin: 0 auto; }
 
 @media (orientation: landscape) and (max-height: 520px) {
-  .hud { grid-template-rows: auto 1fr auto; grid-template-columns: 1.2fr 1fr; column-gap: 4vw; }
-  .hud-top, .hud-foot, .dq-bar, .banner { grid-column: 1 / -1; }
-  .hud-main .roundel { --d: min(24vw, 36vh); }
-  .speed .display { font-size: min(26vw, 46vh); }
-  .hud-clock .display { font-size: min(18vw, 34vh); }
-  .hud-road { grid-column: 1; }
-  .hud-clock { grid-column: 2; grid-row: 2 / span 2; align-self: center; }
+  /* Phone sideways on the mount: speed and limit on the left, clock on the right, one slim row below. */
+  .hud {
+    height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2 * var(--gutter));
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-columns: 1.25fr 1fr;
+    gap: 8px 4vw;
+  }
+  .hud-top, .hud-bottom { grid-column: 1 / -1; }
+  .hud-body { grid-column: 1; grid-row: 2; }
+  .hud-clock { grid-column: 2; grid-row: 2; align-self: center; }
+  .hud-main .roundel { --d: min(22vw, 42vh); }
+  .speed .display { font-size: min(24vw, 50vh); }
+  .speed .unit { font-size: 14px; }
+  .hud-clock .display { font-size: min(19vw, 40vh); }
+  .hud-road { font-size: 16px; }
+  .hud-bottom { display: flex; align-items: center; gap: 12px; }
+  .hud-bottom > .banner, .hud-bottom > .dq-bar { flex: 1; margin: 4px; }
+  .hud-bottom > .banner { font-size: 17px; padding: 7px 10px 4px; }
+  .hud-bottom > .dq-bar:not(.on) { display: none; }
+  .hud-bottom > .hud-foot { flex: 1; }
+  .armed-title { font-size: min(16vw, 34vh); }
+  .armed-note { font-size: 16px; }
 }
 
 /* ---------- Lists, tables, forms ---------- */

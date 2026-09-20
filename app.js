@@ -1,7 +1,7 @@
 // App shell: loads what the phone has stored, then shows one view per hash route.
 
 import { withOverrides } from './src/tunables.js';
-import { WayIndex } from './src/osm.js';
+import { WayIndex, coverage } from './src/osm.js';
 import { store } from './ui/store.js';
 import { Cues } from './ui/audio.js';
 import { mountDrive } from './ui/drive.js';
@@ -32,6 +32,7 @@ const app = {
     this.route = (await store.getRoute()) || null;
     this.roads = (await store.getRoads()) || null;
     this.index = this.roads ? new WayIndex(this.roads.ways) : null;
+    if (this.roads) this.roads.coverage = coverage(this.roads.ways, this.tunables); // follows the Tuning values
     this.runs = await store.runs();
   },
 };

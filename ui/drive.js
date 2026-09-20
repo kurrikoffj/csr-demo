@@ -65,9 +65,8 @@ export function mountDrive(container, app) {
     const bestLine = (from, to, direction) => {
       const b = best(direction);
       return h('tr', {},
-        h('td', {}, `${from} → ${to}`),
-        h('td', { class: 'num' }, b ? formatDuration(b.durationS) : 'no run yet'),
-        h('td', { class: 'num muted' }, b ? fmtDate(b.startT) : ''),
+        h('td', { style: 'white-space:nowrap' }, `${from} → ${to}`),
+        h('td', { class: 'num' }, b ? h('a', { href: `#run/${b.id}` }, formatDuration(b.durationS)) : 'no clean run yet'),
       );
     };
     const cov = roads?.coverage;
@@ -195,7 +194,7 @@ export function mountDrive(container, app) {
           h('div', { class: 'speed' }, h('div', { class: 'display' }, els.speed), h('div', { class: 'unit' }, 'km/h'))),
         els.road),
       h('div', { class: 'hud-clock' }, h('div', { class: 'display' }, els.clock)),
-      h('div', { class: 'stack' },
+      h('div', { class: 'stack hud-bottom' },
         els.banner, els.bar,
         h('div', { class: 'hud-foot' }, els.toGo, els.cancel)),
     );
