@@ -204,7 +204,9 @@ export function mountDrive(container, app) {
     const els = hudEls;
     const s = session();
     els.dir.textContent = `${hud.startName} → ${hud.finishName}`;
-    els.bucket.textContent = `${s.demo ? 'DEMO 8× · ' : ''}${BUCKET_LABELS[s.engine.bucket] || ''}`;
+    els.bucket.textContent = s.screenAwake === false
+      ? 'Screen may sleep · keep it on'
+      : `${s.demo ? 'DEMO 8× · ' : ''}${BUCKET_LABELS[s.engine.bucket] || ''}`;
     setRoundel(els.roundel, hud.limit);
     setDigits(els.speed, hud.speedKmh == null ? '–' : String(Math.round(hud.speedKmh)));
     els.road.textContent = hud.gps === 'weak' ? `Weak GPS (${Math.round(hud.accuracyM)} m)` : hud.wayName || ' ';

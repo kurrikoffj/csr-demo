@@ -26,7 +26,10 @@ export class Session {
       onEvent: (evt) => this._onEvent(evt),
     });
     this.source = null;
-    this.lock = new ScreenLock();
+    this.lock = new ScreenLock((held) => {
+      this.screenAwake = held;
+      this.onChange();
+    });
     this.demo = null; // { save } while replaying
     this.notice = '';
     this.screenAwake = null;
@@ -58,10 +61,7 @@ export class Session {
         this.onChange();
       },
     );
-    this.lock.acquire().then((ok) => {
-      this.screenAwake = ok;
-      this.onChange();
-    });
+    this.lock.acquire();
     this._startTicker();
   }
 
@@ -77,6 +77,7 @@ export class Session {
       },
     });
     this.source = { now: player.now, stop: player.stop };
+    this.lock.acquire(); // a replay outlasts the phone's auto-lock, so it doubles as the keep-awake test
     this._startTicker();
   }
 
@@ -100,7 +101,7 @@ export class Session {
     clearInterval(this._ticker);
     this._ticker = null;
     this.source?.stop();
-    this.lock.release();
+    this.lock.dispose();
   }
 
   _onFix(fix) {

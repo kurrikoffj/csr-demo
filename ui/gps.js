@@ -48,33 +48,61 @@ export function gpsErrorText(err) {
 }
 
 export class ScreenLock {
-  constructor() {
+  // onChange(held) fires whenever the lock is gained or lost, so the HUD can say so.
+  constructor(onChange = () => {}) {
     this.sentinel = null;
     this.wanted = false;
-    document.addEventListener('visibilitychange', () => {
+    this.onChange = onChange;
+    this._onVisible = () => {
       if (this.wanted && document.visibilityState === 'visible') this.acquire();
-    });
+    };
+    document.addEventListener('visibilitychange', this._onVisible);
   }
 
   static get supported() {
     return 'wakeLock' in navigator;
   }
 
-  // The lock is dropped whenever the page is hidden, so it is re-taken when it comes back.
   async acquire() {
     this.wanted = true;
-    if (!ScreenLock.supported) return false;
+    if (!ScreenLock.supported) return this._report(false);
     try {
-      this.sentinel = await navigator.wakeLock.request('screen');
-      return true;
+      const sentinel = await navigator.wakeLock.request('screen');
+      if (!this.wanted) {
+        // The run ended while iOS was still answering: do not keep the screen on afterwards.
+        sentinel.release().catch(() => {});
+        return false;
+      }
+      this.sentinel = sentinel;
+      sentinel.addEventListener('release', () => {
+        if (this.sentinel !== sentinel) return; // released by us
+        this.sentinel = null;
+        this._report(false);
+        // The system drops the lock when the page is hidden, and sometimes on its own. Take it back.
+        if (this.wanted && document.visibilityState === 'visible') {
+          setTimeout(() => { if (this.wanted && !this.sentinel) this.acquire(); }, 1000);
+        }
+      });
+      return this._report(true);
     } catch {
-      return false;
+      return this._report(false);
     }
+  }
+
+  _report(held) {
+    this.onChange(held);
+    return held;
   }
 
   release() {
     this.wanted = false;
-    this.sentinel?.release?.().catch(() => {});
+    const sentinel = this.sentinel;
     this.sentinel = null;
+    sentinel?.release?.().catch(() => {});
+  }
+
+  dispose() {
+    this.release();
+    document.removeEventListener('visibilitychange', this._onVisible);
   }
 }
