@@ -168,7 +168,7 @@ export function mountRoute(container, app, arg) {
       name: draft[key].name, lat: draft[key].lat, lon: draft[key].lon,
       activationM: draft.activationM, finalizationM: draft.finalizationM,
     });
-    const next = { id: saved?.id || app.store.newRouteId(), rev: saved?.rev || 1, a: marker('a'), b: marker('b') };
+    const next = { id: saved?.id || app.store.newRouteId(), rev: saved?.rev || 1, playerId: app.player.id, a: marker('a'), b: marker('b') };
     const moved = saved && ['a', 'b'].some((k) =>
       distanceM(saved[k], next[k]) > 1 || saved[k].activationM !== next[k].activationM || saved[k].finalizationM !== next[k].finalizationM);
     if (moved) next.rev = saved.rev + 1;
@@ -177,7 +177,7 @@ export function mountRoute(container, app, arg) {
     update();
     try {
       app.routes = saved ? app.routes.map((r) => (r.id === next.id ? next : r)) : [...app.routes, next];
-      await app.store.saveRoutes(app.routes);
+      await app.store.saveRoute(next);
       saved = next; // a retry after a failed download must update this route, not add another
       let roads = saved && !moved ? await app.store.getRoads(next.id) : null;
       if (!roads) {

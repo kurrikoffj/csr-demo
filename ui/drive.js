@@ -128,6 +128,8 @@ export function mountDrive(container, app) {
         ? h('p', { class: 'muted' }, `Speed limits known for ${known}% of ${cov.total.toLocaleString()} streets around this route (${cov.tagged.toLocaleString()} signed, ${cov.assumed.toLocaleString()} assumed).`)
         : null,
 
+      h('p', { class: 'muted', style: 'text-align:center' }, `Driving as ${app.player.name}. `, h('a', { href: '#tuning' }, 'Change'), ' · ', h('a', { href: '#feedback' }, 'Send feedback')),
+
       h('h2', { class: 'display' }, 'Try it from the sofa'),
       h('p', { class: 'muted' }, 'Replays a made-up drive along your roads at 8× speed, with all the sounds. Nothing is saved unless you turn that on in Tuning.'),
       h('div', { class: 'row' },

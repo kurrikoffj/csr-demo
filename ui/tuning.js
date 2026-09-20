@@ -2,6 +2,7 @@
 
 import { h, fmtDate } from './dom.js';
 import { DEFAULTS, withOverrides } from '../src/tunables.js';
+import { cleanName } from '../src/profile.js';
 import { downloadRoads } from './limits.js';
 import { persistent } from './store.js';
 import { BUILD } from '../version.js';
@@ -84,9 +85,20 @@ export function mountTuning(container, app) {
     }
   }
 
+  async function renamePlayer(e) {
+    const name = cleanName(e.target.value);
+    if (!name || app.players.some((p) => p.id !== app.player.id && p.name.toLowerCase() === name.toLowerCase())) {
+      e.target.value = app.player.name;
+      status.textContent = name ? `${name} is already a player on this phone.` : 'A player needs a name.';
+      return;
+    }
+    await app.store.savePlayers(app.players.map((p) => (p.id === app.player.id ? { ...p, name } : p)));
+    await app.reload();
+  }
+
   async function exportData() {
-    const data = await app.store.exportAll();
-    const file = new File([JSON.stringify(data)], `csr-demo-${new Date().toISOString().slice(0, 10)}.json`, { type: 'application/json' });
+    const data = await app.store.exportPlayer(app.player);
+    const file = new File([JSON.stringify(data)], `csr-demo-${app.player.name.replace(/\W+/g, '-')}-${new Date().toISOString().slice(0, 10)}.json`, { type: 'application/json' });
     if (navigator.canShare?.({ files: [file] })) {
       try { await navigator.share({ files: [file] }); } catch { /* share sheet closed */ }
       return;
@@ -100,10 +112,13 @@ export function mountTuning(container, app) {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const count = await app.store.importAll(JSON.parse(await file.text()));
+      const plan = await app.store.importFile(JSON.parse(await file.text()), app.player.id);
       await app.reload();
-      status.textContent = `Imported ${count} runs.`;
       draw();
+      const n = plan.runs.length;
+      status.textContent = plan.player.id === app.player.id
+        ? `Imported ${n} ${n === 1 ? 'run' : 'runs'} into ${plan.player.name}.`
+        : `Imported ${n} ${n === 1 ? 'run' : 'runs'} from ${plan.player.name}. Switch player at the top of this page to look through them.`;
     } catch (err) {
       status.textContent = `Import failed: ${err.message}`;
     }
@@ -114,7 +129,20 @@ export function mountTuning(container, app) {
     const picker = h('input', { type: 'file', accept: 'application/json,.json', hidden: true, onchange: importData });
     container.replaceChildren(h('div', { class: 'stack' },
       h('h1', { class: 'display' }, 'Tuning'),
-      h('p', { class: 'muted' }, 'These are placeholders to drive with. Changes apply to the next run; old runs keep their results.'),
+
+      h('h2', { class: 'display', style: 'margin-top:4px' }, 'Player'),
+      app.players.length > 1
+        ? h('label', { class: 'field wide' }, h('span', {}, 'Who is driving'),
+          h('select', { onchange: async (e) => { await app.usePlayer(e.target.value); draw(); } },
+            app.players.map((p) => h('option', { value: p.id, selected: p.id === app.player.id }, p.imported ? `${p.name} (imported)` : p.name))))
+        : null,
+      h('label', { class: 'field' }, h('span', {}, 'Name'),
+        h('input', { type: 'text', maxlength: 24, value: app.player.name, style: 'width:140px;justify-self:end', onchange: renamePlayer })),
+      h('div', { class: 'row' },
+        h('a', { class: 'plate dark small', href: '#player/new' }, 'Add a player'),
+        h('a', { class: 'plate small', href: '#feedback' }, 'Send feedback')),
+      h('p', { class: 'muted' }, 'A player is just a name. Each one keeps their own routes, runs and bests on this phone. The rules below are shared.'),
+
 
       h('h2', { class: 'display' }, 'Sound'),
       h('label', { class: 'field wide' }, h('span', {}, 'How cues play'),
@@ -125,6 +153,7 @@ export function mountTuning(container, app) {
       h('div', { class: 'pads' }, [['go', 'Start'], ['caution', 'Yellow'], ['warning', 'Red'], ['dq', 'Disqualified'], ['finish', 'Finish'], ['best', 'New best'], ['gap', 'GPS paused']].map(([tone, label]) =>
         h('button', { class: 'plate dark small', onclick: () => { app.cues.unlock(); app.cues.play(tone); } }, label))),
 
+      h('p', { class: 'muted gap-top' }, 'The rules below are placeholders to drive with. Changes apply to the next run; old runs keep their results.'),
       GROUPS.map(([title, fields]) => [h('h2', { class: 'display' }, title), fields.map(numberField)]),
 
       h('h2', { class: 'display' }, 'Time-of-day buckets'),
@@ -143,12 +172,18 @@ export function mountTuning(container, app) {
       h('div', { class: 'row' },
         h('button', { class: 'plate dark small', disabled: !app.route, onclick: refreshRoads }, 'Update speed limits'),
         h('button', { class: 'plate dark small', onclick: async () => {
-          const n = await app.store.deleteDemoRuns();
-          app.runs = await app.store.runs();
+          const n = await app.store.deleteDemoRuns(app.player.id);
+          await app.reload();
           status.textContent = `Deleted ${n} demo ${n === 1 ? 'run' : 'runs'}.`;
         } }, 'Delete demo runs')),
+      app.players.length > 1 ? h('button', { class: 'plate dark small', onclick: async () => {
+        if (!confirm(`Delete the player ${app.player.name} with their ${app.routes.length} routes and ${app.runs.length} runs? Other players are untouched.`)) return;
+        await app.store.deletePlayer(app.player.id);
+        await app.usePlayer((app.players.find((p) => p.id !== app.player.id)).id);
+        draw();
+      } }, `Delete player ${app.player.name}`) : null,
       h('button', { class: 'plate red small', onclick: async () => {
-        if (!confirm('Delete the route, all runs and all settings from this phone? Export first if you want a backup.')) return;
+        if (!confirm('Delete every player, route, run and setting from this phone? Export first if you want a backup.')) return;
         await app.store.deleteEverything();
         await app.reload();
         location.hash = '#drive';

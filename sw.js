@@ -1,17 +1,17 @@
 // Network first, so a reload always gets the newest build. The cache only answers when offline
 // (say, opening the page in an underground car park).
 
-const CACHE = 'csr-demo-v3';
+const CACHE = 'csr-demo-v4';
 
 const SHELL = [
   './', './index.html', './styles.css', './app.js', './version.js', './manifest.webmanifest',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png',
   './vendor/leaflet/leaflet.js', './vendor/leaflet/leaflet.css',
   './src/buckets.js', './src/compliance.js', './src/demo.js', './src/geo.js', './src/matcher.js',
-  './src/osm.js', './src/phrases.js', './src/records.js', './src/replay.js', './src/router.js',
+  './src/osm.js', './src/phrases.js', './src/profile.js', './src/records.js', './src/replay.js', './src/router.js',
   './src/runEngine.js', './src/tunables.js',
-  './ui/audio.js', './ui/compass.js', './ui/dom.js', './ui/drive.js', './ui/gps.js', './ui/history.js', './ui/limits.js',
-  './ui/route.js', './ui/routes.js', './ui/session.js', './ui/store.js', './ui/summary.js', './ui/tuning.js',
+  './ui/audio.js', './ui/compass.js', './ui/dom.js', './ui/drive.js', './ui/feedback.js', './ui/gps.js', './ui/history.js', './ui/limits.js',
+  './ui/route.js', './ui/routes.js', './ui/session.js', './ui/store.js', './ui/summary.js', './ui/tuning.js', './ui/welcome.js',
 ];
 
 self.addEventListener('install', (event) => {

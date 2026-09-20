@@ -157,7 +157,7 @@ export class Session {
   async _end(evt) {
     this._teardown();
     const { app } = this;
-    const result = { ...evt.result, demo: !!this.demo };
+    const result = { ...evt.result, demo: !!this.demo, playerId: app.player.id };
     const fixes = this.engine.trace.slice();
     const summary = summarize(result, [...app.runs, result], {
       now: result.startT,

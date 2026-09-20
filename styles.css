@@ -56,7 +56,7 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 body.driving #view { padding-bottom: calc(env(safe-area-inset-bottom) + var(--gutter)); max-width: none; }
-body.driving #tabs { display: none; }
+body.driving #tabs, body.welcome #tabs { display: none; }
 
 /* ---------- Lettering ---------- */
 
@@ -342,6 +342,16 @@ input[type="number"], input[type="text"], input[type="time"], select {
   border-radius: 8px;
   padding: 9px 10px;
   font-family: var(--data);
+}
+textarea {
+  width: 100%;
+  background: var(--asphalt-2);
+  border: 2px solid var(--asphalt-3);
+  border-radius: 8px;
+  padding: 10px;
+  font: 16px/1.45 var(--body);
+  color: inherit;
+  resize: vertical;
 }
 input[type="range"] { width: 100%; accent-color: var(--sign-blue); }
 input[type="checkbox"] { width: 24px; height: 24px; accent-color: var(--sign-blue); justify-self: end; }

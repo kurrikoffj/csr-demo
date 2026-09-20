@@ -2,6 +2,7 @@
 // IndexedDB, with an in-memory fallback so the game still runs where storage is blocked.
 
 import { packTrace, unpackTrace } from '../src/replay.js';
+import { planImport } from '../src/profile.js';
 
 const DB_NAME = 'csr-demo';
 const STORES = ['kv', 'runs', 'traces'];
@@ -55,7 +56,11 @@ export const store = {
   getSettings: async () => (await get('kv', 'settings')) || {},
   saveSettings: (settings) => put('kv', 'settings', settings),
 
-  // Routes: [{ id, rev, a, b }]. Road data is kept per route because it is big.
+  // Players: [{ id, name, createdAt, imported? }]. Routes and runs carry their owner's playerId.
+  getPlayers: async () => (await get('kv', 'players')) || [],
+  savePlayers: (players) => put('kv', 'players', players),
+
+  // Routes of every player: [{ id, rev, playerId, a, b }]. Road data is kept per route because it is big.
   async getRoutes() {
     const routes = await get('kv', 'routes');
     if (routes) return routes;
@@ -70,6 +75,13 @@ export const store = {
     return [legacy];
   },
   saveRoutes: (routes) => put('kv', 'routes', routes),
+  async saveRoute(route) {
+    const routes = await this.getRoutes();
+    const at = routes.findIndex((r) => r.id === route.id);
+    if (at >= 0) routes[at] = route;
+    else routes.push(route);
+    await this.saveRoutes(routes);
+  },
   newRouteId: newId,
   getRoads: (routeId) => get('kv', `roads:${routeId}`),
   saveRoads: (routeId, roads) => put('kv', `roads:${routeId}`, roads),
@@ -79,6 +91,7 @@ export const store = {
     for (const run of (await this.runs()).filter((r) => r.routeId === routeId)) await this.deleteRun(run.id);
   },
 
+  // Runs of every player, newest first.
   async runs() {
     return ((await all('runs')) || []).sort((a, b) => b.startT - a.startT);
   },
@@ -95,39 +108,52 @@ export const store = {
     return rows ? unpackTrace(rows) : null;
   },
 
-  // Backup file. Road data is left out: it is big and can be downloaded again.
-  async exportAll() {
-    const runs = await this.runs();
+  // Routes and runs made before players existed belong to the first player on this phone.
+  async adoptOrphans(playerId) {
+    const routes = await this.getRoutes();
+    if (routes.some((r) => !r.playerId)) await this.saveRoutes(routes.map((r) => (r.playerId ? r : { ...r, playerId })));
+    for (const run of await this.runs()) if (!run.playerId) await put('runs', run.id, { ...run, playerId });
+  },
+
+  // One player's backup file. Road data is left out: it is big and can be downloaded again.
+  async exportPlayer(player, extra = {}) {
+    const runs = (await this.runs()).filter((r) => r.playerId === player.id);
     const traces = {};
     for (const run of runs) traces[run.id] = await get('traces', run.id);
     return {
-      app: 'csr-demo', format: 2, exportedAt: new Date().toISOString(),
-      settings: await this.getSettings(), routes: await this.getRoutes(), runs, traces,
+      app: 'csr-demo', format: 3, exportedAt: new Date().toISOString(),
+      player: { id: player.id, name: player.name, createdAt: player.createdAt },
+      settings: await this.getSettings(),
+      routes: (await this.getRoutes()).filter((r) => r.playerId === player.id),
+      runs, traces, ...extra,
     };
   },
-  async importAll(data) {
-    if (data?.app !== 'csr-demo' || !Array.isArray(data.runs)) throw new Error('Not a CSR Demo export file');
-    if (data.settings) await this.saveSettings(data.settings);
-    const incoming = data.routes || (data.route ? [data.route] : []);
-    if (incoming.length) {
-      const routes = await this.getRoutes();
-      for (const route of incoming) {
-        const at = routes.findIndex((r) => r.id === route.id);
-        if (at >= 0) routes[at] = route;
-        else routes.push(route);
-      }
-      await this.saveRoutes(routes);
+  // Your own backup comes back to you; someone else's file becomes a separate player to look through.
+  async importFile(data, activeId) {
+    const plan = planImport(data, {
+      players: await this.getPlayers(), activeId, routes: await this.getRoutes(), runs: await this.runs(),
+    });
+    if (plan.created) await this.savePlayers([...(await this.getPlayers()), plan.player]);
+    if (plan.applySettings) {
+      const mine = await this.getSettings(); // which player and route are open stays a matter of this phone
+      await this.saveSettings({ ...plan.settings, activePlayerId: mine.activePlayerId, activeRouteByPlayer: mine.activeRouteByPlayer });
     }
-    for (const run of data.runs) {
+    for (const route of plan.routes) await this.saveRoute(route);
+    for (const run of plan.runs) {
       await put('runs', run.id, run);
-      if (data.traces?.[run.id]) await put('traces', run.id, data.traces[run.id]);
+      if (plan.traces[run.id]) await put('traces', run.id, plan.traces[run.id]);
     }
-    return data.runs.length;
+    return plan;
   },
-  async deleteDemoRuns() {
-    const demo = (await this.runs()).filter((r) => r.demo);
+  async deleteDemoRuns(playerId) {
+    const demo = (await this.runs()).filter((r) => r.demo && r.playerId === playerId);
     for (const run of demo) await this.deleteRun(run.id);
     return demo.length;
+  },
+  async deletePlayer(playerId) {
+    for (const route of (await this.getRoutes()).filter((r) => r.playerId === playerId)) await this.deleteRoute(route.id);
+    for (const run of (await this.runs()).filter((r) => r.playerId === playerId)) await this.deleteRun(run.id);
+    await this.savePlayers((await this.getPlayers()).filter((p) => p.id !== playerId));
   },
   async deleteEverything() {
     for (const s of STORES) await wipe(s);
