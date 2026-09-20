@@ -5,6 +5,7 @@ const TONES = {
   // [frequency Hz, start s, duration s, waveform, gain]
   ready: [[880, 0, 0.12, 'sine', 0.5]],
   go: [[660, 0, 0.13, 'triangle', 0.7], [990, 0.16, 0.22, 'triangle', 0.7]],
+  caution: [[740, 0, 0.11, 'sine', 0.55], [740, 0.2, 0.11, 'sine', 0.55]],
   warning: [[1320, 0, 0.09, 'square', 0.45], [1320, 0.16, 0.09, 'square', 0.45], [1320, 0.32, 0.09, 'square', 0.45]],
   dq: [[440, 0, 0.2, 'sawtooth', 0.5], [330, 0.22, 0.2, 'sawtooth', 0.5], [220, 0.44, 0.4, 'sawtooth', 0.5]],
   finish: [[523, 0, 0.14, 'triangle', 0.7], [784, 0.16, 0.3, 'triangle', 0.7]],

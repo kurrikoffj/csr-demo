@@ -41,6 +41,11 @@ export function fromXY(origin, xy) {
   };
 }
 
+// Point reached from p after distM metres on a bearing.
+export function destination(p, bearing, distM) {
+  return fromXY(p, { x: distM * Math.sin(bearing * RAD), y: distM * Math.cos(bearing * RAD) });
+}
+
 // Closest point on segment a→b. t is the fraction along the segment, clamped to 0..1.
 export function projectOnSegment(p, a, b) {
   const B = toXY(a, b);

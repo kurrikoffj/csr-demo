@@ -6,7 +6,7 @@ import { formatDuration, formatDelta, standingText } from '../src/phrases.js';
 import { BUCKET_LABELS } from '../src/buckets.js';
 import { retime } from '../src/replay.js';
 
-const COLORS = { ok: '#1f7a4d', over: '#c4161c', unknown: '#7b828c' };
+const COLORS = { ok: '#1f7a4d', yellow: '#e0a100', over: '#c4161c', unknown: '#7b828c' };
 
 const ABORTS = {
   gps_gap: 'Stopped: GPS was paused for more than two minutes.',
@@ -23,7 +23,7 @@ function verdict(run, summary) {
   return ['dark', `${formatDelta(summary.deltaS)} on your ${BUCKET_LABELS[run.bucket]} best`];
 }
 
-function drawTrace(el, app, run, fixes) {
+function drawTrace(el, app, route, fixes) {
   // Locked until asked: a map that grabs every swipe makes the page impossible to scroll on a phone.
   const map = L.map(el, {
     zoomControl: false, dragging: false, touchZoom: false, scrollWheelZoom: false,
@@ -33,7 +33,7 @@ function drawTrace(el, app, run, fixes) {
     maxZoom: 19, attribution: '© OpenStreetMap contributors',
   }).addTo(map);
   // Consecutive fixes of the same kind become one line.
-  const kind = (f) => (f.over ? 'over' : f.limitKmh == null ? 'unknown' : 'ok');
+  const kind = (f) => (f.zone === 'red' || f.over ? 'over' : f.zone === 'yellow' ? 'yellow' : f.limitKmh == null ? 'unknown' : 'ok');
   let line = null;
   let current = null;
   for (const f of fixes) {
@@ -46,7 +46,6 @@ function drawTrace(el, app, run, fixes) {
     }
     line.addLatLng([f.lat, f.lon]);
   }
-  const { route } = app;
   if (route) {
     for (const [m, cls] of [[route.a, 'a'], [route.b, 'b']]) {
       L.circle([m.lat, m.lon], { radius: m.activationM, color: '#0f4c8a', weight: 2, fillOpacity: 0.08 }).addTo(map);
@@ -78,8 +77,9 @@ export function mountSummary(container, app, runId) {
       now: run.startT, windowDays: app.tunables.recordWindowDays,
     });
     const [tone, text] = verdict(run, summary);
-    const from = run.direction === 'ba' ? app.route?.b.name : app.route?.a.name;
-    const to = run.direction === 'ba' ? app.route?.a.name : app.route?.b.name;
+    const route = app.routeById(run.routeId);
+    const from = run.direction === 'ba' ? route?.b.name : route?.a.name;
+    const to = run.direction === 'ba' ? route?.a.name : route?.b.name;
     const avg = run.durationS ? (run.distanceM / run.durationS) * 3.6 : null;
     const mapEl = h('div', { class: 'map short' });
 
@@ -98,6 +98,7 @@ export function mountSummary(container, app, runId) {
       fixes?.length ? mapEl : null,
       fixes?.length ? h('div', { class: 'legend' },
         h('span', {}, h('i', { style: `background:${COLORS.ok}` }), 'within the limit'),
+        h('span', {}, h('i', { style: `background:${COLORS.yellow}` }), 'a little over'),
         h('span', {}, h('i', { style: `background:${COLORS.over}` }), 'over the limit'),
         h('span', {}, h('i', { style: `background:${COLORS.unknown}` }), 'limit unknown'),
         h('button', { class: 'linklike', onclick: (e) => {
@@ -106,7 +107,7 @@ export function mountSummary(container, app, runId) {
           e.target.textContent = on ? 'Lock map' : 'Move and zoom the map';
         } }, 'Move and zoom the map')) : null,
 
-      h('h2', { class: 'display' }, episodes.length ? 'Over the limit' : 'Never over the limit'),
+      h('h2', { class: 'display' }, episodes.length ? 'In the red' : 'Never in the red'),
       episodes.length ? h('table', {},
         h('thead', {}, h('tr', {}, h('th', {}, 'Road'), h('th', { class: 'num' }, 'Limit'), h('th', { class: 'num' }, 'You'), h('th', { class: 'num' }, 'For'))),
         h('tbody', {}, episodes.map((e) => h('tr', {},
@@ -121,27 +122,29 @@ export function mountSummary(container, app, runId) {
         h('dt', {}, 'Bucket'), h('dd', {}, BUCKET_LABELS[run.bucket] || '–'),
         h('dt', {}, 'Distance driven'), h('dd', {}, fmtKm(run.distanceM)),
         h('dt', {}, 'Average speed'), h('dd', {}, avg ? `${avg.toFixed(1)} km/h` : '–'),
-        h('dt', {}, 'Warnings'), h('dd', {}, String(run.warnings ?? 0)),
+        h('dt', {}, 'A little over the limit (yellow)'), h('dd', {}, formatDuration(run.yellowS ?? 0)),
+        h('dt', {}, 'Clearly over the limit (red)'), h('dd', {}, formatDuration(run.redS ?? 0)),
+        h('dt', {}, 'Yellow cautions · red warnings'), h('dd', {}, `${run.cautions ?? 0} · ${run.warnings ?? 0}`),
         h('dt', {}, 'Speed limit known'), h('dd', {}, `${Math.round((run.knownLimitFrac || 0) * 100)}% of the drive`),
         h('dt', {}, 'GPS pauses'), h('dd', {}, String(run.gaps?.length || 0)),
         run.flags?.impreciseStart ? [h('dt', {}, 'Start line'), h('dd', {}, 'estimated (GPS gap)')] : null,
       ),
 
       h('div', { class: 'row gap-top' },
-        fixes?.length && app.route ? h('button', { class: 'plate dark small', onclick: () => replay(fixes) }, 'Replay this drive 8×') : null,
+        fixes?.length && route ? h('button', { class: 'plate dark small', onclick: () => replay(run, fixes) }, 'Replay this drive 8×') : null,
         saved ? h('button', { class: 'plate dark small', onclick: () => remove(run) }, 'Delete run') : null),
       h('a', { class: 'plate', href: '#drive' }, 'Back to Drive'),
     ));
 
     if (fixes?.length) {
-      map = drawTrace(mapEl, app, run, fixes);
+      map = drawTrace(mapEl, app, route, fixes);
       setTimeout(() => map?.invalidateSize(), 50);
     }
   }
 
   // What-if: the same drive through today's rules and road data. Never saved.
-  function replay(fixes) {
-    app.pendingReplay = retime(fixes, Date.now());
+  function replay(run, fixes) {
+    app.pendingReplay = { fixes: retime(fixes, Date.now()), routeId: run.routeId, direction: run.direction };
     location.hash = '#drive';
   }
 

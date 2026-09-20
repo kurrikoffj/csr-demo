@@ -1,19 +1,24 @@
-// Route tab: place the two markers, set the circle sizes, download speed limits for the area.
+// Route editor: place the two markers, set the circle sizes, download speed limits for the area.
+// arg is a route id, or 'new'.
 
 import { h, fmtKm } from './dom.js';
 import { distanceM } from '../src/geo.js';
-import { WayIndex } from '../src/osm.js';
 import { downloadRoads } from './limits.js';
 
 const EUROPE = { center: [54, 15], zoom: 4 };
 
-export function mountRoute(container, app) {
+export function mountRoute(container, app, arg) {
   const tun = app.tunables;
-  const saved = app.route;
+  let saved = arg === 'new' ? null : app.routeById(arg);
+  if (arg !== 'new' && !saved) {
+    location.hash = '#route';
+    return { unmount() {} };
+  }
+  const first = app.routes[0];
   // Working copy; nothing changes until Save.
   const draft = {
-    a: saved ? { ...saved.a } : { name: 'Home', lat: null, lon: null },
-    b: saved ? { ...saved.b } : { name: 'Work', lat: null, lon: null },
+    a: saved ? { ...saved.a } : { name: first ? first.a.name : 'Home', lat: null, lon: null },
+    b: saved ? { ...saved.b } : { name: first ? 'Finish' : 'Work', lat: null, lon: null },
     activationM: saved?.a.activationM ?? tun.activationRadiusM,
     finalizationM: saved?.a.finalizationM ?? tun.finalizationRadiusM,
   };
@@ -21,11 +26,24 @@ export function mountRoute(container, app) {
   let busy = false;
   const layers = { a: null, b: null };
 
+  // Markers of other routes, so Home is the same spot in every route that starts there.
+  const known = [];
+  for (const route of app.routes) {
+    if (route.id === saved?.id) continue;
+    for (const m of [route.a, route.b]) {
+      if (!known.some((k) => distanceM(k, m) < 1)) known.push(m);
+    }
+  }
+
   const mapEl = h('div', { class: 'map' });
   const hint = h('p', { class: 'notice', style: 'min-height:5.4em' });
-  const status = h('p', { class: 'muted' });
+  const status = h('p', { class: 'muted', role: 'status' });
   const saveBtn = h('button', { class: 'plate', onclick: save }, 'Save route');
-  const nameInput = (key) => h('input', { type: 'text', value: draft[key].name, maxlength: 14, oninput: (e) => { draft[key].name = e.target.value.trim() || (key === 'a' ? 'Home' : 'Work'); } });
+  const names = {};
+  const nameInput = (key) => (names[key] = h('input', {
+    type: 'text', value: draft[key].name, maxlength: 14,
+    oninput: (e) => { draft[key].name = e.target.value.trim() || key.toUpperCase(); },
+  }));
   const placeBtn = (key) => h('button', { class: 'plate dark small', onclick: () => { placing = key; update(); } }, `Move ${key.toUpperCase()}`);
   const slider = (field, label, help) => {
     const out = h('span', { class: 'data' }, `${draft[field]} m`);
@@ -36,12 +54,17 @@ export function mountRoute(container, app) {
   };
 
   container.replaceChildren(h('div', { class: 'stack' },
-    h('h1', { class: 'display' }, 'Route'),
+    h('div', { class: 'hud-top' },
+      h('h1', { class: 'display' }, saved ? 'Edit route' : 'New route'),
+      app.routes.length ? h('a', { href: '#route' }, 'All routes') : null),
     hint,
     mapEl,
     h('div', { class: 'row' },
       h('button', { class: 'plate dark small', onclick: locate }, 'Show where I am'),
       placeBtn('a'), placeBtn('b')),
+    known.length ? h('div', { class: 'stack', style: 'gap:6px' },
+      h('p', { class: 'muted' }, 'Or reuse a marker from another route, so it is exactly the same spot:'),
+      h('div', { class: 'pads' }, known.map((m) => h('button', { class: 'plate dark small', onclick: () => reuse(m) }, m.name)))) : null,
     h('label', { class: 'field' }, h('span', {}, 'Name of marker A'), nameInput('a')),
     h('label', { class: 'field' }, h('span', {}, 'Name of marker B'), nameInput('b')),
     slider('activationM', 'Start circle', 'The clock starts when you drive out of this circle. Make it big enough to cover where you park.'),
@@ -55,6 +78,7 @@ export function mountRoute(container, app) {
   const map = L.map(mapEl, { zoomControl: true });
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
   if (saved) map.fitBounds(L.latLngBounds([[saved.a.lat, saved.a.lon], [saved.b.lat, saved.b.lon]]).pad(0.25));
+  else if (first) map.setView([first.a.lat, first.a.lon], 13);
   else {
     map.setView(EUROPE.center, EUROPE.zoom);
     locate();
@@ -68,6 +92,19 @@ export function mountRoute(container, app) {
     placing = placing === 'a' && draft.b.lat == null ? 'b' : null;
     update();
   });
+
+  function reuse(marker) {
+    const key = placing || (draft.a.lat == null ? 'a' : draft.b.lat == null ? 'b' : null);
+    if (!key) {
+      status.textContent = 'Both markers are placed. Tap Move A or Move B first, then the marker to reuse.';
+      return;
+    }
+    draft[key] = { ...draft[key], name: marker.name, lat: marker.lat, lon: marker.lon };
+    names[key].value = marker.name;
+    placing = key === 'a' && draft.b.lat == null ? 'b' : null;
+    map.setView([marker.lat, marker.lon], Math.max(map.getZoom(), 14));
+    update();
+  }
 
   function locate() {
     if (!('geolocation' in navigator)) return;
@@ -131,7 +168,7 @@ export function mountRoute(container, app) {
       name: draft[key].name, lat: draft[key].lat, lon: draft[key].lon,
       activationM: draft.activationM, finalizationM: draft.finalizationM,
     });
-    const next = { id: saved?.id || 'r1', rev: saved?.rev || 1, a: marker('a'), b: marker('b') };
+    const next = { id: saved?.id || app.store.newRouteId(), rev: saved?.rev || 1, a: marker('a'), b: marker('b') };
     const moved = saved && ['a', 'b'].some((k) =>
       distanceM(saved[k], next[k]) > 1 || saved[k].activationM !== next[k].activationM || saved[k].finalizationM !== next[k].finalizationM);
     if (moved) next.rev = saved.rev + 1;
@@ -139,20 +176,22 @@ export function mountRoute(container, app) {
     busy = true;
     update();
     try {
-      await app.store.saveRoute(next);
-      app.route = next;
-      const covered = app.roads && !moved && saved;
-      if (!covered) {
-        const roads = await downloadRoads(next, app.tunables, (msg) => { status.textContent = msg; });
+      app.routes = saved ? app.routes.map((r) => (r.id === next.id ? next : r)) : [...app.routes, next];
+      await app.store.saveRoutes(app.routes);
+      saved = next; // a retry after a failed download must update this route, not add another
+      let roads = saved && !moved ? await app.store.getRoads(next.id) : null;
+      if (!roads) {
+        roads = await downloadRoads(next, app.tunables, (msg) => { status.textContent = msg; });
         status.textContent = 'Saving the road data…';
-        await app.store.saveRoads(roads);
-        app.roads = roads;
-        app.index = new WayIndex(roads.ways);
+        await app.store.saveRoads(next.id, roads);
       }
+      await app.useRoute(next.id);
       const c = app.roads.coverage;
       status.textContent = `Saved. Speed limits known for ${Math.round(((c.tagged + c.assumed) / c.total) * 100)}% of ${c.total.toLocaleString()} streets in this area.`;
-      setTimeout(() => { if (location.hash === '#route') location.hash = '#drive'; }, 1200);
+      setTimeout(() => { if (location.hash.startsWith('#route/')) location.hash = '#drive'; }, 1200);
     } catch (err) {
+      // The route itself is saved; only the speed limits are missing. Saving again retries the download.
+      await app.useRoute(next.id);
       status.textContent = err.message;
     } finally {
       busy = false;

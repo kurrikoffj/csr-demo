@@ -49,13 +49,35 @@ const del = (s, key) => op(s, 'readwrite', (os, mem) => (os ? os.delete(key) : v
 const all = (s) => op(s, 'readonly', (os, mem) => (os ? os.getAll() : [...mem.values()]));
 const wipe = (s) => op(s, 'readwrite', (os, mem) => (os ? os.clear() : void mem.clear()));
 
+const newId = () => `r${Date.now().toString(36)}`;
+
 export const store = {
   getSettings: async () => (await get('kv', 'settings')) || {},
   saveSettings: (settings) => put('kv', 'settings', settings),
-  getRoute: () => get('kv', 'route'),
-  saveRoute: (route) => put('kv', 'route', route),
-  getRoads: () => get('kv', 'roads'),
-  saveRoads: (roads) => put('kv', 'roads', roads),
+
+  // Routes: [{ id, rev, a, b }]. Road data is kept per route because it is big.
+  async getRoutes() {
+    const routes = await get('kv', 'routes');
+    if (routes) return routes;
+    // First builds stored a single route under 'route' with its roads under 'roads'.
+    const legacy = await get('kv', 'route');
+    if (!legacy) return [];
+    const roads = await get('kv', 'roads');
+    if (roads) await put('kv', `roads:${legacy.id}`, roads);
+    await put('kv', 'routes', [legacy]);
+    await del('kv', 'route');
+    await del('kv', 'roads');
+    return [legacy];
+  },
+  saveRoutes: (routes) => put('kv', 'routes', routes),
+  newRouteId: newId,
+  getRoads: (routeId) => get('kv', `roads:${routeId}`),
+  saveRoads: (routeId, roads) => put('kv', `roads:${routeId}`, roads),
+  async deleteRoute(routeId) {
+    await this.saveRoutes((await this.getRoutes()).filter((r) => r.id !== routeId));
+    await del('kv', `roads:${routeId}`);
+    for (const run of (await this.runs()).filter((r) => r.routeId === routeId)) await this.deleteRun(run.id);
+  },
 
   async runs() {
     return ((await all('runs')) || []).sort((a, b) => b.startT - a.startT);
@@ -79,14 +101,23 @@ export const store = {
     const traces = {};
     for (const run of runs) traces[run.id] = await get('traces', run.id);
     return {
-      app: 'csr-demo', format: 1, exportedAt: new Date().toISOString(),
-      settings: await this.getSettings(), route: (await this.getRoute()) || null, runs, traces,
+      app: 'csr-demo', format: 2, exportedAt: new Date().toISOString(),
+      settings: await this.getSettings(), routes: await this.getRoutes(), runs, traces,
     };
   },
   async importAll(data) {
     if (data?.app !== 'csr-demo' || !Array.isArray(data.runs)) throw new Error('Not a CSR Demo export file');
     if (data.settings) await this.saveSettings(data.settings);
-    if (data.route) await this.saveRoute(data.route);
+    const incoming = data.routes || (data.route ? [data.route] : []);
+    if (incoming.length) {
+      const routes = await this.getRoutes();
+      for (const route of incoming) {
+        const at = routes.findIndex((r) => r.id === route.id);
+        if (at >= 0) routes[at] = route;
+        else routes.push(route);
+      }
+      await this.saveRoutes(routes);
+    }
     for (const run of data.runs) {
       await put('runs', run.id, run);
       if (data.traces?.[run.id]) await put('traces', run.id, data.traces[run.id]);

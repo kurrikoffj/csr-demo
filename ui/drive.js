@@ -1,7 +1,8 @@
-// Drive tab: ready screen, armed screen, and the HUD while a run is on.
+// Drive tab: ready screen (pick route and direction), armed screen, and the HUD while a run is on.
 
-import { h, roundel, setRoundel, fmtKm, fmtM, fmtDate } from './dom.js';
+import { h, roundel, setRoundel, guideArrow, setGuideArrow, fmtKm } from './dom.js';
 import { Session } from './session.js';
+import { routeLabel } from './routes.js';
 import { bucketFor, BUCKET_LABELS } from '../src/buckets.js';
 import { bestsByBucket } from '../src/records.js';
 import { formatDuration } from '../src/phrases.js';
@@ -9,7 +10,7 @@ import { distanceM } from '../src/geo.js';
 import { demoDrive } from '../src/demo.js';
 import { ScreenLock } from './gps.js';
 
-const ARROW = '<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M50 6 88 48H64v46H36V48H12z"/></svg>';
+const UP_ARROW = '<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M50 6 88 48H64v46H36V48H12z"/></svg>';
 
 function digits(text) {
   const el = h('span', { class: 'digits' });
@@ -21,6 +22,12 @@ function setDigits(el, text) {
   if (el.dataset.text === text) return;
   el.dataset.text = text;
   el.replaceChildren(...[...text].map((ch) => h('span', { class: /\d/.test(ch) ? '' : 'sep' }, ch)));
+}
+
+// Whole metres close in, so the last stretch reads as a countdown.
+function guideDistance(m) {
+  if (m >= 1000) return fmtKm(m);
+  return `${m < 300 ? Math.round(m) : Math.round(m / 10) * 10} m`;
 }
 
 export function mountDrive(container, app) {
@@ -35,7 +42,7 @@ export function mountDrive(container, app) {
       onEnd: (result, summary, fixes) => {
         app.lastResult = { result, summary, fixes };
         setBody('idle');
-        if (result.status === 'finished' || result.startT != null) location.hash = `#run/${result.id}`;
+        if (result.startT != null) location.hash = `#run/${result.id}`;
         else refresh();
       },
     });
@@ -48,6 +55,16 @@ export function mountDrive(container, app) {
     document.body.classList.toggle('driving', state !== 'idle');
   }
 
+  // Commuters alternate: default to the opposite of the last run on this route.
+  function direction() {
+    const { route } = app;
+    if (app.direction[route.id]) return app.direction[route.id];
+    const last = app.runs.find((r) => r.routeId === route.id && r.status === 'finished');
+    return last?.direction === 'ab' ? 'ba' : 'ab';
+  }
+
+  const names = (dir) => (dir === 'ba' ? [app.route.b.name, app.route.a.name] : [app.route.a.name, app.route.b.name]);
+
   // ----- Ready -----
 
   function ready() {
@@ -56,103 +73,127 @@ export function mountDrive(container, app) {
       return h('div', { class: 'stack' },
         h('h1', { class: 'display' }, 'Set your start and finish'),
         h('p', {}, 'Place two markers on the map, for example home and work. The clock runs between them, in either direction, on any roads you choose.'),
-        h('a', { class: 'plate', href: '#route' }, 'Place markers'),
+        h('a', { class: 'plate', href: '#route/new' }, 'Place markers'),
       );
     }
+    const dir = direction();
+    const [from, to] = names(dir);
     const bucket = bucketFor(new Date(), tunables.buckets);
-    const best = (direction) =>
-      bestsByBucket(runs, { routeId: route.id, routeRev: route.rev, direction }, { windowDays: tunables.recordWindowDays })[bucket];
-    const bestLine = (from, to, direction) => {
-      const b = best(direction);
-      return h('tr', {},
-        h('td', { style: 'white-space:nowrap' }, `${from} → ${to}`),
-        h('td', { class: 'num' }, b ? h('a', { href: `#run/${b.id}` }, formatDuration(b.durationS)) : 'no clean run yet'),
-      );
-    };
+    const best = bestsByBucket(runs, { routeId: route.id, routeRev: route.rev, direction: dir }, { windowDays: tunables.recordWindowDays })[bucket];
     const cov = roads?.coverage;
     const known = cov ? Math.round(((cov.tagged + cov.assumed) / cov.total) * 100) : null;
     const s = session();
 
+    // The route sign doubles as the route picker: a native select laid over it.
+    const picker = app.routes.length > 1
+      ? h('select', {
+        class: 'route-select', 'aria-label': 'Route',
+        onchange: async (e) => {
+          await app.useRoute(e.target.value);
+          refresh(true);
+        },
+      }, app.routes.map((r) => h('option', { value: r.id, selected: r.id === route.id }, routeLabel(r))))
+      : null;
+
     return h('div', { class: 'stack' },
-      h('div', { class: 'plate route-sign' },
+      h('div', { class: 'plate route-sign', style: 'position:relative' },
         h('span', { class: 'display' }, route.a.name, h('span', { class: 'arrow' }, '⇄'), route.b.name),
-        h('span', { class: 'data' }, fmtKm(distanceM(route.a, route.b))),
-      ),
+        h('span', { class: 'data', style: picker ? 'font-size:24px' : '' }, picker ? '▾' : fmtKm(distanceM(route.a, route.b))),
+        picker),
+      h('div', { class: 'seg', role: 'group', 'aria-label': 'Direction' },
+        ['ab', 'ba'].map((d) => h('button', {
+          'aria-pressed': String(dir === d),
+          onclick: () => { app.direction[route.id] = d; refresh(true); },
+        }, names(d).join(' → ')))),
       s?.notice ? h('p', { class: 'notice' }, s.notice) : null,
       !roads
-        ? h('p', { class: 'notice' }, 'Speed limits are not downloaded yet, so no limit can be shown or enforced. ',
-          h('a', { href: '#route' }, 'Download them on the Route tab.'))
+        ? h('p', { class: 'notice' }, 'Speed limits are not downloaded for this route, so no limit can be shown or enforced. ',
+          h('a', { href: `#route/${route.id}` }, 'Open the route and save it again to download them.'))
         : null,
-      h('button', { class: 'arm', 'aria-label': 'Arm', onclick: () => startSession((x) => x.armLive()), innerHTML: ARROW }),
-      h('p', { class: 'display arm-label' }, 'Arm'),
+      h('button', { class: 'arm', 'aria-label': `Arm ${from} to ${to}`, onclick: () => startSession((x) => x.armLive({ direction: dir })), innerHTML: UP_ARROW }),
+      h('p', { class: 'display arm-label' }, `Arm ${from} → ${to}`),
       h('p', { class: 'muted', style: 'text-align:center' },
-        'Phone on the mount, this page in front, screen on. Start your music first. The clock starts by itself when you drive out of the start circle.'),
+        `Phone on the mount, this page in front, screen on. Start your music first. An arrow leads you to the ${from} start circle; the clock starts by itself when you drive out of it.`),
       ScreenLock.supported ? null
         : h('p', { class: 'notice' }, 'This browser cannot keep the screen awake. Set Auto-Lock to Never while you test.'),
 
       h('h2', { class: 'display' }, `Now: ${BUCKET_LABELS[bucket]}`),
-      h('table', {}, h('tbody', {},
-        bestLine(route.a.name, route.b.name, 'ab'),
-        bestLine(route.b.name, route.a.name, 'ba'))),
+      h('table', {}, h('tbody', {}, h('tr', {},
+        h('td', { style: 'white-space:nowrap' }, `${from} → ${to} best`),
+        h('td', { class: 'num' }, best ? h('a', { href: `#run/${best.id}` }, formatDuration(best.durationS)) : 'no clean run yet')))),
       known != null
-        ? h('p', { class: 'muted' }, `Speed limits known for ${known}% of ${cov.total.toLocaleString()} streets around this route (${cov.tagged.toLocaleString()} signed, ${cov.assumed.toLocaleString()} assumed). Downloaded ${fmtDate(roads.fetchedAt)}.`)
+        ? h('p', { class: 'muted' }, `Speed limits known for ${known}% of ${cov.total.toLocaleString()} streets around this route (${cov.tagged.toLocaleString()} signed, ${cov.assumed.toLocaleString()} assumed).`)
         : null,
 
       h('h2', { class: 'display' }, 'Try it from the sofa'),
       h('p', { class: 'muted' }, 'Replays a made-up drive along your roads at 8× speed, with all the sounds. Nothing is saved unless you turn that on in Tuning.'),
       h('div', { class: 'row' },
-        h('button', { class: 'plate dark small', disabled: !app.index, onclick: () => demo(false) }, 'Replay a clean drive'),
-        h('button', { class: 'plate dark small', disabled: !app.index, onclick: () => demo(true) }, 'Replay with speeding'),
+        h('button', { class: 'plate dark small', disabled: !app.index, onclick: () => demo(dir, false) }, 'Replay a clean drive'),
+        h('button', { class: 'plate dark small', disabled: !app.index, onclick: () => demo(dir, true) }, 'Replay with speeding'),
       ),
     );
   }
 
-  function demo(speeding) {
-    const fixes = demoDrive(app.index, app.route, { tunables: app.tunables, speeding, startT: Date.now() });
+  function demo(dir, speeding) {
+    const fixes = demoDrive(app.index, app.route, { tunables: app.tunables, direction: dir, speeding, startT: Date.now() });
     if (!fixes) {
       app.session = { notice: 'The downloaded roads do not connect your two markers. Move a marker onto a street and save the route again.' };
       return refresh(true);
     }
-    startSession((x) => x.armReplay(fixes, { rate: 8, save: !!app.settings.saveDemos }));
+    startSession((x) => x.armReplay(fixes, { rate: 8, save: !!app.settings.saveDemos, direction: dir }));
   }
 
   // ----- Armed -----
 
   function armed() {
     const els = {
+      title: h('span', { class: 'display' }),
+      big: h('p', { class: 'display armed-title' }, 'Armed'),
+      guide: h('div', { class: 'armed-guide' }),
+      arrow: guideArrow(),
+      dist: h('span', { class: 'display guide-dist' }),
+      northUp: h('span', { class: 'data guide-north' }, 'N ↑ until you move'),
       note: h('p', { class: 'armed-note' }),
-      sub: h('p', { class: 'armed-note muted', style: 'color:inherit;opacity:.8' }),
+      sub: h('p', { class: 'armed-note', style: 'opacity:.8' }),
       roundel: roundel(null),
-      speed: h('span', { class: 'display', style: 'font-size:64px' }, '–'),
+      speed: h('span', { class: 'display', style: 'font-size:56px' }, '–'),
     };
-    els.roundel.style.setProperty('--d', '84px');
+    els.roundel.style.setProperty('--d', '76px');
+    els.guide.append(els.arrow, h('div', {}, els.dist, els.northUp));
     hudEls = els;
     return h('div', { class: 'hud', style: 'grid-template-rows:auto 1fr auto' },
       h('div', { class: 'hud-top' },
-        h('span', { class: 'display' }, session().demo ? 'Demo 8×' : 'Live GPS'),
-        h('span', { class: 'data' }, BUCKET_LABELS[bucketFor(new Date(session().now()), app.tunables.buckets)]),
-      ),
-      h('div', { class: 'stack', style: 'align-self:center' },
-        h('p', { class: 'display armed-title' }, 'Armed'),
+        els.title,
+        h('span', { class: 'data' }, session().demo ? 'Demo 8×' : BUCKET_LABELS[bucketFor(new Date(session().now()), app.tunables.buckets)])),
+      h('div', { class: 'stack hud-body' },
+        els.big,
+        els.guide,
         els.note,
         els.sub,
-        h('div', { class: 'row', style: 'justify-content:center;align-items:center;gap:18px;margin-top:10px' },
-          els.roundel, h('div', { style: 'flex:none' }, els.speed, h('span', { class: 'unit' }, ' km/h'))),
-      ),
+        h('div', { class: 'row', style: 'justify-content:center;align-items:center;gap:18px;margin-top:6px' },
+          els.roundel, h('div', { style: 'flex:none' }, els.speed, h('span', { class: 'unit' }, ' km/h')))),
       h('div', { class: 'row' },
         h('button', { class: 'plate white small', onclick: () => app.cues.play('warning') }, 'Test warning sound'),
-        h('button', { class: 'plate white small', onclick: () => session().stop() }, 'Disarm'),
-      ),
+        h('button', { class: 'plate white small', onclick: () => session().stop() }, 'Disarm')),
     );
   }
 
   function updateArmed(hud) {
     const els = hudEls;
     const s = session();
+    const [from, to] = hud.direction ? [hud.startName, hud.finishName] : names(s.engine.preferred);
+    els.title.textContent = `Armed · ${from} → ${to}`;
+    els.guide.hidden = !hud.target;
+    els.big.hidden = !!hud.target; // the arrow replaces the big word while there is somewhere to drive to
+    if (hud.target) {
+      setGuideArrow(els.arrow, hud.target.bearingDeg, hud.headingDeg);
+      els.dist.textContent = guideDistance(hud.target.distM);
+      els.northUp.hidden = hud.headingDeg != null;
+    }
     const texts = {
       gps: ['Waiting for GPS…', hud.accuracyM ? `Accuracy ${Math.round(hud.accuracyM)} m. Needs ${app.tunables.maxAccuracyM} m or better.` : s.notice || 'Allow location if asked.'],
-      enter: ['Drive into a start circle.', `${fmtM(hud.distToStartM)} to the nearest one.`],
-      leave: [`At ${hud.startName}. The clock starts when you drive out of the circle.`, `Finish: ${hud.finishName}. ${fmtM(hud.distToStartM)} from the marker.`],
+      enter: [`to the ${from} start circle`, 'Drive through it. The clock starts as you come out the other side.'],
+      leave: [`You are at ${from}.`, 'The clock starts when you drive out of the circle.'],
     }[hud.waitingFor] || ['', ''];
     els.note.textContent = texts[0];
     els.sub.textContent = s.screenAwake === false ? `${texts[1]} Screen lock is not held: keep the screen on yourself.` : texts[1];
@@ -173,7 +214,10 @@ export function mountDrive(container, app) {
       clock: digits('0:00'),
       bar: h('div', { class: 'dq-bar', 'aria-hidden': 'true' }, h('i')),
       banner: h('p', { class: 'plate yellow display banner', hidden: true }, 'Disqualified · this run does not count'),
-      toGo: h('span', { class: 'data' }),
+      guide: h('div', { class: 'guide' }),
+      arrow: guideArrow(),
+      dist: h('span', { class: 'display guide-dist' }),
+      to: h('span', { class: 'guide-to' }),
       cancel: h('button', {
         class: 'plate white small',
         onclick: () => {
@@ -185,6 +229,7 @@ export function mountDrive(container, app) {
         },
       }, 'Cancel run'),
     };
+    els.guide.append(els.arrow, els.dist, els.to);
     hudEls = els;
     return h('div', { class: 'hud' },
       h('div', { class: 'hud-top' }, els.dir, els.bucket),
@@ -196,7 +241,7 @@ export function mountDrive(container, app) {
       h('div', { class: 'hud-clock' }, h('div', { class: 'display' }, els.clock)),
       h('div', { class: 'stack hud-bottom' },
         els.banner, els.bar,
-        h('div', { class: 'hud-foot' }, els.toGo, els.cancel)),
+        h('div', { class: 'hud-foot' }, els.guide, els.cancel)),
     );
   }
 
@@ -209,12 +254,19 @@ export function mountDrive(container, app) {
       : `${s.demo ? 'DEMO 8× · ' : ''}${BUCKET_LABELS[s.engine.bucket] || ''}`;
     setRoundel(els.roundel, hud.limit);
     setDigits(els.speed, hud.speedKmh == null ? '–' : String(Math.round(hud.speedKmh)));
-    els.road.textContent = hud.gps === 'weak' ? `Weak GPS (${Math.round(hud.accuracyM)} m)` : hud.wayName || ' ';
+    els.road.textContent = hud.gps === 'weak' ? `Weak GPS (${Math.round(hud.accuracyM)} m)`
+      : hud.zone === 'yellow' ? 'A little over the limit' : hud.wayName || ' ';
     setDigits(els.clock, formatDuration(hud.elapsedS));
     els.banner.hidden = !hud.disqualified;
     els.bar.classList.toggle('on', !hud.disqualified && hud.dqProgress > 0);
     els.bar.firstChild.style.width = `${Math.round(hud.dqProgress * 100)}%`;
-    els.toGo.textContent = hud.distToFinishM == null ? '' : `${fmtM(hud.distToFinishM)} to ${hud.finishName}`;
+    els.guide.hidden = !hud.target;
+    if (hud.target) {
+      setGuideArrow(els.arrow, hud.target.bearingDeg, hud.headingDeg);
+      els.dist.textContent = guideDistance(hud.target.distM);
+      els.to.textContent = hud.finishClose ? 'to finish' : `to ${hud.finishName}`;
+      els.guide.classList.toggle('close', hud.finishClose);
+    }
   }
 
   // ----- Switching -----
@@ -230,7 +282,7 @@ export function mountDrive(container, app) {
     }
     if (want === 'ready') return setBody('idle');
     const hud = s.hud();
-    setBody(want === 'armed' ? 'armed' : hud.over ? 'over' : 'running');
+    setBody(want === 'armed' ? 'armed' : hud.zone === 'red' ? 'over' : hud.zone === 'yellow' ? 'caution' : 'running');
     if (want === 'armed') updateArmed(hud);
     else updateRunning(hud);
   }
@@ -238,9 +290,12 @@ export function mountDrive(container, app) {
   refresh(true);
   if (app.pendingReplay) {
     // "Replay this drive" from a run's summary: same trace, today's rules. Never saved.
-    const fixes = app.pendingReplay;
+    const { fixes, routeId, direction: dir } = app.pendingReplay;
     app.pendingReplay = null;
-    startSession((x) => x.armReplay(fixes, { rate: 8, save: false }));
+    (async () => {
+      if (routeId && routeId !== app.route?.id && app.routeById(routeId)) await app.useRoute(routeId);
+      startSession((x) => x.armReplay(fixes, { rate: 8, save: false, direction: dir }));
+    })();
   }
   return {
     unmount() {

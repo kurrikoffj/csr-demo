@@ -28,5 +28,8 @@ Browser demo of a solo commute time-trial: drive A→B on real roads, beat your 
 ## Browser constraints (iOS Safari)
 GPS only while the page is visible and the screen is on; audio must be unlocked by a tap (Arm); Wake Lock in Home Screen mode needs iOS 18.4+.
 
-## Status (2026-09-20)
-Engine, screens and publishing done; live at the Pages URL. Verified in a desktop browser with replayed drives over real OSM data. Not yet verified on an iPhone: cue audibility over music and with the ringer off, screen wake lock, GPS speed readings. Next: owner's parked test, first commute, then tune from exported traces (limit-drop heads-up, live splits vs. best, per-road limit overrides).
+## Status (2026-09-20, after playtest 1)
+Live at the Pages URL. Owner has driven it on an iPhone. Added from his notes: guidance arrow (to the start circle once armed, metre countdown over the last 200 m to the finish line), yellow tier (a little over the limit for a sustained time; warns only unless `yellowDqRate` > 0), multiple routes with a route + direction picker on Drive. Still unverified on the phone: cue audibility over music / ringer off, wake lock holding for a whole drive. Next: tune from exported traces; limit-drop heads-up, live splits vs. best, per-road limit overrides.
+
+## Data model
+Routes: `[{ id, rev, a, b }]`, marker `{ name, lat, lon, activationM, finalizationM }`. Road data is stored per route (`roads:<id>`). Runs carry `routeId`, `routeRev`, `direction`, `bucket`; a best is the fastest clean run for that key inside the record window. Traces are packed rows with a zone column (0 ok, 1 red, 2 yellow).

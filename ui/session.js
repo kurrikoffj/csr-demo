@@ -49,10 +49,11 @@ export class Session {
     return this.engine.hud(this.now());
   }
 
-  armLive() {
+  // direction: 'ab' | 'ba' picked on the Drive screen.
+  armLive({ direction = null } = {}) {
     this.demo = null;
     this.app.cues.unlock();
-    this.engine.arm();
+    this.engine.arm({ direction });
     this.source = new LiveGps();
     this.source.start(
       (fix) => this._onFix(fix),
@@ -66,10 +67,10 @@ export class Session {
   }
 
   // Replay a trace through the same pipeline. save: keep the result in history (tagged as a demo).
-  armReplay(fixes, { rate = 8, save = false } = {}) {
+  armReplay(fixes, { rate = 8, save = false, direction = null } = {}) {
     this.demo = { save };
     this.app.cues.unlock();
-    this.engine.arm();
+    this.engine.arm({ direction });
     const player = playFixes(fixes, (fix) => this._onFix(fix), {
       rate,
       onDone: () => {
@@ -119,6 +120,9 @@ export class Session {
     switch (evt.type) {
       case 'started':
         cues.play('go');
+        break;
+      case 'caution':
+        cues.play('caution');
         break;
       case 'warning':
         cues.play('warning');

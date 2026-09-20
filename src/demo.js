@@ -2,13 +2,15 @@
 // tried from the sofa: marker to marker, just under each road's limit, with a yellow spell and,
 // if asked, one stretch of real speeding.
 
-import { distanceM } from './geo.js';
+import { distanceM, bearingDeg, destination } from './geo.js';
 import { wayLimit } from './osm.js';
 import { route } from './router.js';
 import { syntheticDrive } from './replay.js';
 import { DEFAULTS } from './tunables.js';
 
 const PARKED_S = 5;
+const APPROACH_M = 220;
+const MARGIN_M = 90;
 const UNKNOWN_LIMIT_SPEED = 40;
 
 // direction 'ab' | 'ba'. Returns fixes, or null when the markers are not connected by the roads.
@@ -20,24 +22,34 @@ export function demoDrive(index, routeDef, { tunables = DEFAULTS, direction = 'a
 
   // Leg i runs from point i to point i+1. Marker positions bracket the road path so the
   // drive begins inside the start circle even when the marker sits a little off the road.
-  const points = [{ lat: from.lat, lon: from.lon }, ...r.points, { lat: to.lat, lon: to.lon }];
+  // It begins a little way short of the start circle, so the demo also shows the arrow that leads there.
+  const start = { lat: from.lat, lon: from.lon };
+  const approach = destination(start, bearingDeg(start, r.points[Math.min(1, r.points.length - 1)]) + 180, APPROACH_M);
+  const points = [approach, start, ...r.points, { lat: to.lat, lon: to.lon }];
   const legs = [];
   let total = 0;
   for (let i = 0; i + 1 < points.length; i++) {
     const len = distanceM(points[i], points[i + 1]);
-    const wi = r.wayIdx[Math.min(i, r.wayIdx.length - 1)];
+    const wi = i === 0 ? null : r.wayIdx[Math.min(i - 1, r.wayIdx.length - 1)]; // leg 0 is the off-road approach
     legs.push({ from: total, len, limit: wi == null ? null : wayLimit(index.ways[wi], tunables) });
     total += len;
   }
 
-  // First stretch of at least lengthM, starting after fromFrac of the drive, where every leg passes ok().
+  // First stretch of lengthM, after fromFrac of the drive, on roads that pass ok() and share one limit.
+  // It sits MARGIN_M inside that run, clear of the slack the engine allows around limit changes.
   const stretch = (fromFrac, lengthM, ok) => {
     let runStart = null;
+    let kmh = null;
     for (const leg of legs) {
       if (leg.from < total * fromFrac || !ok(leg)) runStart = null;
       else {
-        runStart ??= leg.from;
-        if (leg.from + leg.len - runStart >= lengthM + 60) return { from: runStart + 30, to: runStart + 30 + lengthM };
+        if (runStart == null || leg.limit.kmh !== kmh) {
+          runStart = leg.from;
+          kmh = leg.limit.kmh;
+        }
+        if (leg.from + leg.len - runStart >= lengthM + 2 * MARGIN_M) {
+          return { from: runStart + MARGIN_M, to: runStart + MARGIN_M + lengthM };
+        }
       }
     }
     return null;

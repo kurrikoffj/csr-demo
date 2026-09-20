@@ -2,7 +2,6 @@
 
 import { h, fmtDate } from './dom.js';
 import { DEFAULTS, withOverrides } from '../src/tunables.js';
-import { WayIndex } from '../src/osm.js';
 import { downloadRoads } from './limits.js';
 import { persistent } from './store.js';
 import { BUILD } from '../version.js';
@@ -10,9 +9,12 @@ import { BUILD } from '../version.js';
 // [key, label, unit, help]
 const GROUPS = [
   ['Speeding', [
-    ['overToleranceKmh', 'Tolerance over the limit', 'km/h', 'GPS speed wobbles a little. You count as over the limit above limit + this.'],
-    ['warnAfterS', 'Warn after', 's', 'Seconds over before the warning sounds.'],
-    ['warnRepeatS', 'Repeat warning every', 's', ''],
+    ['overToleranceKmh', 'Yellow band width', 'km/h', 'From the limit up to limit + this is yellow. Above it is red. GPS speed wobbles a little, which is why the band exists.'],
+    ['yellowAfterS', 'Yellow caution after', 's', 'Continuous seconds above the limit before the yellow caution.'],
+    ['yellowRepeatS', 'Repeat yellow caution every', 's', ''],
+    ['yellowDqRate', 'Yellow counts toward disqualification', '×', '0 means yellow only warns. At 0.25, every 4 s of yellow counts as 1 s of red.'],
+    ['warnAfterS', 'Red warning after', 's', 'Seconds in red before the warning sounds.'],
+    ['warnRepeatS', 'Repeat red warning every', 's', ''],
     ['dqAfterS', 'Disqualify after', 's', 'Sustained seconds over a signed limit. The concept doc’s placeholder is about 5.'],
     ['dqDrainRate', 'Clock drain rate', '×', 'How fast the disqualification clock runs back down while you are under the limit.'],
   ]],
@@ -26,6 +28,7 @@ const GROUPS = [
   ['Start, finish and pauses', [
     ['startMinSpeedMs', 'Start needs at least', 'm/s', '2.5 m/s is 9 km/h. Stops GPS wander while parked from starting the clock.'],
     ['finishMinElapsedS', 'Shortest possible run', 's', ''],
+    ['finishCountdownM', 'Finish countdown from', 'm', 'The arrow and metre countdown take over inside this distance to the finish line.'],
     ['gapFlagS', 'GPS pause that voids a run', 's', 'Happens when the phone locks or another app comes to the front.'],
     ['gapAbortS', 'GPS pause that stops a run', 's', ''],
     ['recordWindowDays', 'Records last', 'days', ''],
@@ -73,9 +76,8 @@ export function mountTuning(container, app) {
     if (!app.route) return;
     try {
       const roads = await downloadRoads(app.route, app.tunables, (msg) => { status.textContent = msg; });
-      await app.store.saveRoads(roads);
-      app.roads = roads;
-      app.index = new WayIndex(roads.ways);
+      await app.store.saveRoads(app.route.id, roads);
+      await app.useRoute(app.route.id);
       status.textContent = `Speed limits updated: ${roads.ways.length.toLocaleString()} roads.`;
     } catch (err) {
       status.textContent = err.message;
@@ -120,7 +122,7 @@ export function mountTuning(container, app) {
           h('option', { value: 'mix', selected: s.audioMode !== 'takeover' }, 'Over my music'),
           h('option', { value: 'takeover', selected: s.audioMode === 'takeover' }, 'Always audible')),
         h('small', {}, '“Over my music” follows the iPhone ringer switch: with the ringer off, cues are silent. “Always audible” ignores the switch but may pause other audio. Tap a sound below to check.')),
-      h('div', { class: 'pads' }, [['go', 'Start'], ['warning', 'Warning'], ['dq', 'Disqualified'], ['finish', 'Finish'], ['best', 'New best'], ['gap', 'GPS paused']].map(([tone, label]) =>
+      h('div', { class: 'pads' }, [['go', 'Start'], ['caution', 'Yellow'], ['warning', 'Red'], ['dq', 'Disqualified'], ['finish', 'Finish'], ['best', 'New best'], ['gap', 'GPS paused']].map(([tone, label]) =>
         h('button', { class: 'plate dark small', onclick: () => { app.cues.unlock(); app.cues.play(tone); } }, label))),
 
       GROUPS.map(([title, fields]) => [h('h2', { class: 'display' }, title), fields.map(numberField)]),

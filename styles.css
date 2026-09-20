@@ -21,6 +21,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; } /* flex and grid rules would otherwise un-hide things */
 
 html { -webkit-text-size-adjust: 100%; }
 
@@ -37,6 +38,9 @@ body {
 
 body[data-state="armed"] { background: var(--sign-blue); }
 body[data-state="over"] { background: var(--sign-red); }
+/* Yellow: a little over the limit for a while. Dark ink on traffic yellow. */
+body[data-state="caution"] { background: var(--sign-yellow); color: #111; }
+body[data-state="caution"] .dq-bar { border-color: #111; }
 
 h1, h2, h3, p { margin: 0; }
 a { color: inherit; }
@@ -130,6 +134,39 @@ button.plate:disabled { opacity: 0.45; cursor: default; }
 .route-sign { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .route-sign .display { font-size: 34px; }
 .route-sign .arrow { padding: 0 0.2em; }
+
+/* On Drive the sign is also the route picker: an invisible native select covers it. */
+.route-select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+
+/* On Routes each sign is a button. */
+button.plate.route-pick {
+  display: flex;
+  text-align: left;
+  font: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 14px 16px;
+}
+button.plate.route-pick .data { font-family: var(--data); font-size: 15px; }
+
+/* ---------- Guidance arrow ---------- */
+
+.guide-arrow { display: inline-grid; place-items: center; width: 1em; height: 1em; font-size: 28px; flex: none; }
+.guide-arrow svg { width: 100%; height: 100%; fill: currentColor; transition: transform 0.4s ease-out; }
+@media (prefers-reduced-motion: reduce) { .guide-arrow svg { transition: none; } }
+
+.guide { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.guide .guide-dist { font-size: 26px; padding-top: 4px; white-space: nowrap; }
+.guide .guide-to { font-size: 14px; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Last stretch: the countdown to the finish line takes over. */
+.guide.close { background: var(--sign-white); color: #111; border-radius: 10px; padding: 6px 12px 2px; }
+.guide.close .guide-arrow { font-size: 46px; }
+.guide.close .guide-dist { font-size: 50px; }
+
+.armed-guide { display: flex; align-items: center; justify-content: center; gap: 18px; }
+.armed-guide .guide-arrow { font-size: min(34vw, 150px); }
+.armed-guide .guide-dist { display: block; font-size: min(22vw, 100px); padding-top: 0.1em; }
+.guide-north { display: block; font-size: 12px; opacity: 0.85; letter-spacing: 0.06em; text-transform: uppercase; }
 
 /* ---------- Speed limit roundel ---------- */
 
@@ -256,6 +293,10 @@ body[data-state="over"] .hud-main .roundel { animation: pulse 0.6s ease-in-out i
   .hud-bottom > .hud-foot { flex: 1; }
   .armed-title { font-size: min(16vw, 34vh); }
   .armed-note { font-size: 16px; }
+  .armed-guide .guide-arrow { font-size: min(16vw, 38vh); }
+  .armed-guide .guide-dist { font-size: min(12vw, 28vh); }
+  .guide.close .guide-arrow { font-size: 34px; }
+  .guide.close .guide-dist { font-size: 36px; }
 }
 
 /* ---------- Lists, tables, forms ---------- */

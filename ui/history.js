@@ -1,12 +1,14 @@
 // History tab: current bests per time-of-day bucket, then every run.
 
 import { h, fmtDate, fmtClock } from './dom.js';
+import { routeLabel } from './routes.js';
 import { BUCKETS, BUCKET_LABELS } from '../src/buckets.js';
 import { bestsByBucket, isClean } from '../src/records.js';
 import { formatDuration } from '../src/phrases.js';
 
 export function mountHistory(container, app) {
   let direction = 'ab';
+  let routeId = app.route?.id;
 
   function tagFor(run, bests) {
     if (run.status !== 'finished') return h('span', { class: 'tag bad' }, 'Did not finish');
@@ -17,12 +19,13 @@ export function mountHistory(container, app) {
   }
 
   function draw() {
-    const { route, runs, tunables } = app;
+    const { runs, tunables } = app;
+    const route = app.routeById(routeId) || app.route;
     if (!route) {
       return container.replaceChildren(h('div', { class: 'stack' },
         h('h1', { class: 'display' }, 'No runs yet'),
         h('p', {}, 'Runs show up here after you place your markers and drive between them.'),
-        h('a', { class: 'plate', href: '#route' }, 'Place markers')));
+        h('a', { class: 'plate', href: '#route/new' }, 'Place markers')));
     }
     const names = direction === 'ab' ? [route.a.name, route.b.name] : [route.b.name, route.a.name];
     const mine = runs.filter((r) => r.routeId === route.id && r.direction === direction);
@@ -32,6 +35,8 @@ export function mountHistory(container, app) {
 
     container.replaceChildren(h('div', { class: 'stack' },
       h('h1', { class: 'display' }, 'History'),
+      app.routes.length > 1 ? h('select', { 'aria-label': 'Route', onchange: (e) => { routeId = e.target.value; draw(); } },
+        app.routes.map((r) => h('option', { value: r.id, selected: r.id === route.id }, routeLabel(r)))) : null,
       h('div', { class: 'seg', role: 'group', 'aria-label': 'Direction' },
         ['ab', 'ba'].map((d) => h('button', {
           'aria-pressed': String(direction === d),
