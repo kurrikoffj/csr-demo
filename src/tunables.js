@@ -42,7 +42,9 @@ export const DEFAULTS = Object.freeze({
 
   // Guidance arrow
   finishCountdownM: 200, // the finish arrow and metre countdown take over the HUD inside this distance
-  headingMinSpeedMs: 1.5, // below this the GPS course is unreliable; the last good one is kept
+  headingMinSpeedMs: 3, // ~11 km/h: only a vehicle-speed GPS course is trusted; on foot the compass is used
+  courseHoldS: 180, // a GPS course is held this long through a stop before the compass takes over
+  guideMaxAccuracyM: 150, // the arrow follows fixes this rough; starting the clock still needs maxAccuracyM
 
   // GPS pauses (browser loses GPS when the page is hidden)
   gapFlagS: 10,

@@ -221,3 +221,32 @@ test('a run records its yellow time and cautions, and stays clean', () => {
   assert.equal(r.redS, 0);
   assert.ok(e.trace.some((f) => f.zone === 'yellow'));
 });
+
+test('on foot with rough GPS: the arrow and distance still follow you, but the clock cannot start', () => {
+  const e = new RunEngine({ route: townRoute(), matcher: new Matcher(town()) });
+  e.arm({ direction: 'ab' });
+  const walk = (y, t) => fixAt(0, y, { t: MONDAY_AM + t * 1000, speedKmh: 5, heading: 0, accuracy: 40 });
+  feed(e, [walk(-600, 0)]);
+  const first = e.hud(MONDAY_AM);
+  assert.equal(first.waitingFor, 'gps');
+  assert.ok(Math.abs(first.target.distM - 240) < 1, `300 m from the marker, 60 m circle: ${first.target.distM}`);
+  feed(e, [walk(-500, 70)]);
+  const later = e.hud(MONDAY_AM + 70000);
+  assert.ok(Math.abs(later.target.distM - 140) < 1, `distance follows a rough fix: ${later.target.distM}`);
+  assert.equal(later.headingDeg, null, 'a walking-pace GPS course is not trusted; the compass steers the arrow');
+  assert.equal(e.direction, null, 'rough fixes never settle direction or start the clock');
+});
+
+test('a fix rougher than 150 m does not move the arrow', () => {
+  const e = engine();
+  feed(e, [fixAt(0, -600, { t: MONDAY_AM, accuracy: 10 }), fixAt(900, 900, { t: MONDAY_AM + 1000, accuracy: 900 })]);
+  assert.ok(Math.abs(e.hud(MONDAY_AM + 1000).target.distM - 240) < 1);
+});
+
+test('the age of the GPS course is reported, so a stale one can hand over to the compass', () => {
+  const e = engine();
+  const fixes = commuteFixes().slice(0, 30);
+  feed(e, fixes);
+  assert.equal(e.hud(fixes.at(-1).t).headingAgeS, 0);
+  assert.equal(e.hud(fixes.at(-1).t + 200000).headingAgeS, 200);
+});

@@ -25,6 +25,9 @@ Browser demo of a solo commute time-trial: drive A→B on real roads, beat your 
 ## Fix format
 `{ t: ms epoch, lat, lon, speed: m/s|null, heading: deg|null, accuracy: m }` — same shape from live GPS, replay and tests.
 
+## Guidance arrow
+"Up" for the arrow comes from `Session.guideHeading`: a vehicle-speed GPS course (≥ `headingMinSpeedMs`, held `courseHoldS` through stops), else the phone compass (`ui/compass.js`, asked for inside the Arm tap), else north-up. The arrow follows fixes as rough as `guideMaxAccuracyM`; starting or stopping the clock still needs `maxAccuracyM`.
+
 ## Browser constraints (iOS Safari)
 GPS only while the page is visible and the screen is on; audio must be unlocked by a tap (Arm); Wake Lock in Home Screen mode needs iOS 18.4+.
 

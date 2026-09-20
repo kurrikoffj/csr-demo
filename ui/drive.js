@@ -24,6 +24,9 @@ function setDigits(el, text) {
   el.replaceChildren(...[...text].map((ch) => h('span', { class: /\d/.test(ch) ? '' : 'sep' }, ch)));
 }
 
+// What the guidance arrow is steering by, said plainly under the distance.
+const MODE_TEXT = { course: 'by direction of travel', compass: 'by compass', north: 'north up' };
+
 // Whole metres close in, so the last stretch reads as a countdown.
 function guideDistance(m) {
   if (m >= 1000) return fmtKm(m);
@@ -152,14 +155,15 @@ export function mountDrive(container, app) {
       guide: h('div', { class: 'armed-guide' }),
       arrow: guideArrow(),
       dist: h('span', { class: 'display guide-dist' }),
-      northUp: h('span', { class: 'data guide-north' }, 'N ↑ until you move'),
+      mode: h('span', { class: 'data guide-north' }),
+      gps: h('p', { class: 'armed-note data', style: 'font-size:14px;opacity:.85' }),
       note: h('p', { class: 'armed-note' }),
       sub: h('p', { class: 'armed-note', style: 'opacity:.8' }),
       roundel: roundel(null),
       speed: h('span', { class: 'display', style: 'font-size:56px' }, '–'),
     };
     els.roundel.style.setProperty('--d', '76px');
-    els.guide.append(els.arrow, h('div', {}, els.dist, els.northUp));
+    els.guide.append(els.arrow, h('div', {}, els.dist, els.mode));
     hudEls = els;
     return h('div', { class: 'hud', style: 'grid-template-rows:auto 1fr auto' },
       h('div', { class: 'hud-top' },
@@ -170,6 +174,7 @@ export function mountDrive(container, app) {
         els.guide,
         els.note,
         els.sub,
+        els.gps,
         h('div', { class: 'row', style: 'justify-content:center;align-items:center;gap:18px;margin-top:6px' },
           els.roundel, h('div', { style: 'flex:none' }, els.speed, h('span', { class: 'unit' }, ' km/h')))),
       h('div', { class: 'row' },
@@ -186,17 +191,20 @@ export function mountDrive(container, app) {
     els.guide.hidden = !hud.target;
     els.big.hidden = !!hud.target; // the arrow replaces the big word while there is somewhere to drive to
     if (hud.target) {
-      setGuideArrow(els.arrow, hud.target.bearingDeg, hud.headingDeg);
+      const up = s.guideHeading(hud);
+      setGuideArrow(els.arrow, hud.target.bearingDeg, up.deg);
       els.dist.textContent = guideDistance(hud.target.distM);
-      els.northUp.hidden = hud.headingDeg != null;
+      els.mode.textContent = MODE_TEXT[up.source] + (up.source === 'north' && s.compass.status === 'denied' ? ' · compass refused' : '');
     }
-    const texts = {
-      gps: ['Waiting for GPS…', hud.accuracyM ? `Accuracy ${Math.round(hud.accuracyM)} m. Needs ${app.tunables.maxAccuracyM} m or better.` : s.notice || 'Allow location if asked.'],
-      enter: [`to the ${from} start circle`, 'Drive through it. The clock starts as you come out the other side.'],
-      leave: [`You are at ${from}.`, 'The clock starts when you drive out of the circle.'],
-    }[hud.waitingFor] || ['', ''];
-    els.note.textContent = texts[0];
-    els.sub.textContent = s.screenAwake === false ? `${texts[1]} Screen lock is not held: keep the screen on yourself.` : texts[1];
+    const weak = hud.waitingFor === 'gps';
+    const label = hud.target ? `to the ${from} start circle` : hud.gps === 'none' ? 'Waiting for GPS…' : `You are at ${from}.`;
+    const advice = hud.gps === 'none' ? s.notice || 'Allow location if asked.'
+      : hud.target ? 'Go through it. The clock starts as you come out the other side.'
+        : 'The clock starts when you drive out of the circle.';
+    els.note.textContent = label;
+    els.sub.textContent = s.screenAwake === false ? `${advice} Screen lock is not held: keep the screen on yourself.` : advice;
+    els.gps.textContent = hud.accuracyM == null ? ''
+      : `GPS ±${Math.round(hud.accuracyM)} m${weak ? ` · too rough to start the clock, needs ±${app.tunables.maxAccuracyM} m. Usually better outdoors.` : ''}`;
     setRoundel(els.roundel, hud.limit);
     els.speed.textContent = hud.speedKmh == null ? '–' : String(Math.round(hud.speedKmh));
   }
@@ -262,7 +270,7 @@ export function mountDrive(container, app) {
     els.bar.firstChild.style.width = `${Math.round(hud.dqProgress * 100)}%`;
     els.guide.hidden = !hud.target;
     if (hud.target) {
-      setGuideArrow(els.arrow, hud.target.bearingDeg, hud.headingDeg);
+      setGuideArrow(els.arrow, hud.target.bearingDeg, s.guideHeading(hud).deg);
       els.dist.textContent = guideDistance(hud.target.distM);
       els.to.textContent = hud.finishClose ? 'to finish' : `to ${hud.finishName}`;
       els.guide.classList.toggle('close', hud.finishClose);

@@ -1,7 +1,7 @@
 // Network first, so a reload always gets the newest build. The cache only answers when offline
 // (say, opening the page in an underground car park).
 
-const CACHE = 'csr-demo-v2';
+const CACHE = 'csr-demo-v3';
 
 const SHELL = [
   './', './index.html', './styles.css', './app.js', './version.js', './manifest.webmanifest',
@@ -10,7 +10,7 @@ const SHELL = [
   './src/buckets.js', './src/compliance.js', './src/demo.js', './src/geo.js', './src/matcher.js',
   './src/osm.js', './src/phrases.js', './src/records.js', './src/replay.js', './src/router.js',
   './src/runEngine.js', './src/tunables.js',
-  './ui/audio.js', './ui/dom.js', './ui/drive.js', './ui/gps.js', './ui/history.js', './ui/limits.js',
+  './ui/audio.js', './ui/compass.js', './ui/dom.js', './ui/drive.js', './ui/gps.js', './ui/history.js', './ui/limits.js',
   './ui/route.js', './ui/routes.js', './ui/session.js', './ui/store.js', './ui/summary.js', './ui/tuning.js',
 ];
 

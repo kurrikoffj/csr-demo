@@ -23,6 +23,7 @@ export class RunEngine {
     this.direction = null; // 'ab' | 'ba'
     this.preferred = null; // direction picked on screen; standing in a start circle overrides it
     this.lastHeading = null; // last reliable GPS course, kept while stopped so the guidance arrow holds still
+    this.lastHeadingT = null;
     this.compliance = new Compliance(this.tun);
     this.trace = [];
     this.distanceM = 0;
@@ -70,6 +71,7 @@ export class RunEngine {
     const usable = fix.accuracy != null && fix.accuracy <= this.tun.maxAccuracyM;
     if (usable && fix.heading != null && fix.speed != null && fix.speed >= this.tun.headingMinSpeedMs) {
       this.lastHeading = fix.heading;
+      this.lastHeadingT = fix.t;
     }
     if (this.state === 'running') this._runningFix(fix, usable);
     else {
@@ -243,7 +245,8 @@ export class RunEngine {
   hud(now) {
     const fix = this.lastFix;
     const usable = !!fix && fix.accuracy != null && fix.accuracy <= this.tun.maxAccuracyM;
-    const pos = usable ? fix : this.lastUsable;
+    // The arrow may follow a rougher fix than the one needed to start or stop the clock.
+    const pos = fix && fix.accuracy != null && fix.accuracy <= this.tun.guideMaxAccuracyM ? fix : this.lastUsable;
     const out = {
       state: this.state,
       direction: this.direction,
@@ -253,6 +256,7 @@ export class RunEngine {
       accuracyM: fix?.accuracy ?? null,
       speedKmh: fix?.speed != null ? fix.speed * KMH_PER_MS : null,
       headingDeg: this.lastHeading,
+      headingAgeS: this.lastHeadingT == null ? null : Math.max(0, (now - this.lastHeadingT) / 1000),
       limit: this.lastMatch?.limit ?? null,
       wayName: this.lastMatch?.way?.name ?? '',
       zone: this.compliance.zone,

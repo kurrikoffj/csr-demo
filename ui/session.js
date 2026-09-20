@@ -6,6 +6,7 @@ import { Matcher } from '../src/matcher.js';
 import { summarize } from '../src/records.js';
 import { playFixes } from '../src/replay.js';
 import { LiveGps, ScreenLock, gpsErrorText } from './gps.js';
+import { Compass } from './compass.js';
 
 const ABORT_TEXT = {
   gps_gap: 'Run stopped. GPS was paused for too long. Keep this page open and the screen on.',
@@ -31,6 +32,7 @@ export class Session {
       this.onChange();
     });
     this.demo = null; // { save } while replaying
+    this.compass = new Compass();
     this.notice = '';
     this.screenAwake = null;
     this._ticker = null;
@@ -49,10 +51,21 @@ export class Session {
     return this.engine.hud(this.now());
   }
 
+  // Which way is "up" for the guidance arrow.
+  // In a car: the GPS course, held through stops. On foot or parked: the compass. Neither: north.
+  guideHeading(hud) {
+    const course = hud.headingDeg;
+    if (course != null && hud.headingAgeS <= this.app.tunables.courseHoldS) return { deg: course, source: 'course' };
+    if (!this.demo && this.compass.heading != null) return { deg: this.compass.heading, source: 'compass' };
+    if (course != null) return { deg: course, source: 'course' };
+    return { deg: null, source: 'north' };
+  }
+
   // direction: 'ab' | 'ba' picked on the Drive screen.
   armLive({ direction = null } = {}) {
     this.demo = null;
     this.app.cues.unlock();
+    this.compass.start(); // asks for Motion & Orientation access; must happen inside the Arm tap
     this.engine.arm({ direction });
     this.source = new LiveGps();
     this.source.start(
@@ -102,6 +115,7 @@ export class Session {
     clearInterval(this._ticker);
     this._ticker = null;
     this.source?.stop();
+    this.compass.stop();
     this.lock.dispose();
   }
 
