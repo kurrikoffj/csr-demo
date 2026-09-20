@@ -4,7 +4,7 @@
 // Finish line = the finish marker's finalization circle, crossed inward. Crossing times are interpolated.
 
 import { DEFAULTS, KMH_PER_MS } from './tunables.js';
-import { distanceM, circleCrossing } from './geo.js';
+import { distanceM, bearingDeg, circleCrossing } from './geo.js';
 import { bucketFor } from './buckets.js';
 import { Compliance } from './compliance.js';
 
@@ -21,6 +21,8 @@ export class RunEngine {
 
   _clear() {
     this.direction = null; // 'ab' | 'ba'
+    this.preferred = null; // direction picked on screen; standing in a start circle overrides it
+    this.lastHeading = null; // last reliable GPS course, kept while stopped so the guidance arrow holds still
     this.compliance = new Compliance(this.tun);
     this.trace = [];
     this.distanceM = 0;
@@ -48,8 +50,10 @@ export class RunEngine {
     return this.direction === 'ba' ? this.route.a : this.route.b;
   }
 
-  arm() {
+  // direction: 'ab' | 'ba' the driver means to run. Optional; without it the first circle entered decides.
+  arm({ direction = null } = {}) {
     this._clear();
+    this.preferred = direction;
     this.matcher?.reset();
     this.state = 'armed';
     this._emit({ type: 'armed' });
@@ -64,6 +68,9 @@ export class RunEngine {
   onFix(fix) {
     this._events = [];
     const usable = fix.accuracy != null && fix.accuracy <= this.tun.maxAccuracyM;
+    if (usable && fix.heading != null && fix.speed != null && fix.speed >= this.tun.headingMinSpeedMs) {
+      this.lastHeading = fix.heading;
+    }
     if (this.state === 'running') this._runningFix(fix, usable);
     else {
       if (this.matcher && usable) this.lastMatch = this.matcher.match(fix);
@@ -89,15 +96,20 @@ export class RunEngine {
 
   _armedFix(fix) {
     const tun = this.tun;
-    if (!this.direction) {
-      const { a, b } = this.route;
-      if (distanceM(fix, a) <= a.activationM) this.direction = 'ab';
-      else if (distanceM(fix, b) <= b.activationM) this.direction = 'ba';
-      else return; // armed outside both circles: drive into one first
-      this._emit({ type: 'direction', direction: this.direction });
+    const { a, b } = this.route;
+    // Standing in a start circle settles the direction, whatever was picked on screen.
+    const inside = distanceM(fix, a) <= a.activationM ? 'ab' : distanceM(fix, b) <= b.activationM ? 'ba' : null;
+    const direction = inside || this.direction || this.preferred;
+    if (direction && direction !== this.direction) {
+      this.direction = direction;
+      this._lastInside = null;
+      this._pending = null;
+      this._fastCount = 0;
+      this._emit({ type: 'direction', direction });
     }
+    if (!this.direction) return; // armed outside both circles with no direction picked: drive into one
     const start = this.startMarker;
-    if (distanceM(fix, start) <= start.activationM) {
+    if (inside === this.direction) {
       this._lastInside = fix;
       this._pending = null;
       this._fastCount = 0;
@@ -167,7 +179,8 @@ export class RunEngine {
       limit,
       ctx: { wayId: match?.way?.id ?? null, wayName: match?.way?.name ?? '', lat: fix.lat, lon: fix.lon },
     });
-    fix.over = this.compliance.isOver;
+    fix.zone = this.compliance.zone;
+    fix.over = fix.zone === 'red';
     for (const e of events) this._emit(e);
 
     const fin = this.finishMarker;
@@ -212,6 +225,9 @@ export class RunEngine {
       disqualified: c.disqualified,
       dqAt: c.dqAt,
       warnings: c.warnings,
+      cautions: c.cautions,
+      yellowS: c.yellowS,
+      redS: c.redS,
       episodes: c.episodes.map((e) => ({ ...e })),
       limitStats: { ...s },
       knownLimitFrac: counted ? (s.tagged + s.assumed) / counted : 0,
@@ -222,9 +238,12 @@ export class RunEngine {
   }
 
   // Everything the drive screen needs, in one object.
+  // target: where the guidance arrow points, { kind, name, bearingDeg, distM } with distM measured
+  // to the edge of the circle, because that edge is the start or finish line.
   hud(now) {
     const fix = this.lastFix;
     const usable = !!fix && fix.accuracy != null && fix.accuracy <= this.tun.maxAccuracyM;
+    const pos = usable ? fix : this.lastUsable;
     const out = {
       state: this.state,
       direction: this.direction,
@@ -233,29 +252,47 @@ export class RunEngine {
       gps: !fix ? 'none' : usable ? 'ok' : 'weak',
       accuracyM: fix?.accuracy ?? null,
       speedKmh: fix?.speed != null ? fix.speed * KMH_PER_MS : null,
+      headingDeg: this.lastHeading,
       limit: this.lastMatch?.limit ?? null,
       wayName: this.lastMatch?.way?.name ?? '',
+      zone: this.compliance.zone,
       over: this.compliance.isOver,
       dqProgress: this.compliance.dqProgress,
       disqualified: this.compliance.disqualified,
       elapsedS: null,
       distanceM: this.distanceM,
+      distToStartM: null,
       distToFinishM: null,
+      target: null,
+      finishClose: false,
       waitingFor: null,
+    };
+    const aim = (kind, marker, radiusM) => {
+      const d = distanceM(pos, marker);
+      return { kind, name: marker.name, bearingDeg: bearingDeg(pos, marker), distM: Math.max(0, d - radiusM) };
     };
     if (this.state === 'armed') {
       if (!usable) out.waitingFor = 'gps';
-      else if (!this.direction) {
-        out.waitingFor = 'enter';
-        out.distToStartM = Math.min(distanceM(fix, this.route.a), distanceM(fix, this.route.b));
-      } else {
-        out.waitingFor = 'leave';
-        out.distToStartM = distanceM(fix, this.startMarker);
+      if (pos) {
+        const { a, b } = this.route;
+        const start = this.direction ? this.startMarker
+          : this.preferred ? (this.preferred === 'ba' ? b : a)
+            : distanceM(pos, a) <= distanceM(pos, b) ? a : b;
+        out.distToStartM = distanceM(pos, start);
+        const inside = out.distToStartM <= start.activationM;
+        if (usable) out.waitingFor = inside ? 'leave' : 'enter';
+        if (!inside) out.target = aim('start', start, start.activationM);
+        out.startName ??= start.name;
       }
     }
     if (this.state === 'running') {
       out.elapsedS = Math.max(0, (now - this.startT) / 1000);
-      if (usable) out.distToFinishM = distanceM(fix, this.finishMarker);
+      if (pos) {
+        const fin = this.finishMarker;
+        out.distToFinishM = distanceM(pos, fin);
+        out.target = aim('finish', fin, fin.finalizationM);
+        out.finishClose = out.target.distM <= this.tun.finishCountdownM;
+      }
     }
     if (this.state === 'finished' || this.state === 'aborted') {
       out.elapsedS = this.endT != null && this.startT != null ? (this.endT - this.startT) / 1000 : null;

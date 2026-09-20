@@ -4,6 +4,7 @@ import { RunEngine } from '../src/runEngine.js';
 import { Matcher } from '../src/matcher.js';
 import { withOverrides } from '../src/tunables.js';
 import { syntheticDrive } from '../src/replay.js';
+import { distanceM } from '../src/geo.js';
 import { town, townRoute, commuteFixes, legalSpeed, feed, fixAt, xy, COMMUTE, MONDAY_AM } from './helpers.js';
 
 function engine(tunables) {
@@ -157,4 +158,66 @@ test('cancel while running aborts; hud reports what the driver should do', () =>
   e.cancel();
   assert.equal(e.state, 'aborted');
   assert.equal(e.result().abortReason, 'manual');
+});
+
+test('direction picked on screen applies when armed away from both circles, and the arrow aims at that start', () => {
+  const e = new RunEngine({ route: townRoute(), matcher: new Matcher(town()) });
+  e.arm({ direction: 'ba' });
+  const events = feed(e, [fixAt(3000, 0, { t: MONDAY_AM, speedKmh: 40, heading: 90 })]);
+  assert.deepEqual(types(events), ['direction']);
+  const hud = e.hud(MONDAY_AM);
+  assert.equal(hud.waitingFor, 'enter');
+  assert.equal(hud.startName, 'Work');
+  assert.equal(hud.target.kind, 'start');
+  assert.ok(Math.abs(hud.target.distM - (900 - 60)) < 1, `to the circle edge: ${hud.target.distM}`);
+  assert.ok(Math.abs(hud.target.bearingDeg - 90) < 0.5);
+  assert.equal(hud.headingDeg, 90);
+});
+
+test('standing in the other start circle overrides the direction picked on screen', () => {
+  const e = new RunEngine({ route: townRoute(), matcher: new Matcher(town()) });
+  e.arm({ direction: 'ba' });
+  const events = feed(e, commuteFixes());
+  assert.deepEqual(types(events), ['direction', 'started', 'finished']);
+  assert.equal(e.result().direction, 'ab');
+});
+
+test('inside the start circle there is no arrow; running aims at the finish line and counts down the last 200 m', () => {
+  const e = engine();
+  const fixes = commuteFixes();
+  feed(e, fixes.slice(0, 2));
+  assert.equal(e.hud(0).waitingFor, 'leave');
+  assert.equal(e.hud(0).target, null);
+
+  const far = fixes.findIndex((f) => distanceM(f, townRoute().b) < 1500);
+  feed(e, fixes.slice(2, far));
+  let hud = e.hud(fixes[far].t);
+  assert.equal(hud.target.kind, 'finish');
+  assert.equal(hud.target.name, 'Work');
+  assert.equal(hud.finishClose, false);
+
+  const close = fixes.findIndex((f) => distanceM(f, townRoute().b) < 200);
+  feed(e, fixes.slice(far, close + 1));
+  hud = e.hud(fixes[close].t);
+  assert.equal(hud.finishClose, true);
+  assert.ok(hud.target.distM < 160 && hud.target.distM > 100, `metres to the line: ${hud.target.distM}`);
+});
+
+test('the last good heading is kept while stopped at a light', () => {
+  const e = engine();
+  feed(e, commuteFixes().slice(0, 40));
+  const moving = e.hud(0).headingDeg;
+  feed(e, [{ ...e.lastFix, t: e.lastFix.t + 1000, speed: 0, heading: null }]);
+  assert.equal(e.hud(0).headingDeg, moving);
+});
+
+test('a run records its yellow time and cautions, and stays clean', () => {
+  const e = engine();
+  feed(e, commuteFixes({ speedKmh: (d) => (d > 800 && d < 1200 ? 52 : legalSpeed(d)) }));
+  const r = e.result();
+  assert.equal(r.clean, true);
+  assert.equal(r.cautions, 2);
+  assert.ok(r.yellowS > 25 && r.yellowS < 30, `yellow seconds ${r.yellowS}`);
+  assert.equal(r.redS, 0);
+  assert.ok(e.trace.some((f) => f.zone === 'yellow'));
 });

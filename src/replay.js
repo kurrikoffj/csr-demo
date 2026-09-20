@@ -63,18 +63,20 @@ export function playFixes(fixes, onFix, { rate = 8, onDone = () => {} } = {}) {
   };
 }
 
-// Traces are stored and exported as rows to stay small: [t, lat, lon, speed, heading, accuracy, limitKmh, over].
+// Traces are stored and exported as rows to stay small:
+// [t, lat, lon, speed, heading, accuracy, limitKmh, zone] with zone 0 ok, 1 red, 2 yellow.
 export function packTrace(fixes) {
   const r = (v, p) => (v == null ? null : Math.round(v * p) / p);
   return fixes.map((f) => [
     Math.round(f.t), r(f.lat, 1e6), r(f.lon, 1e6), r(f.speed, 100), r(f.heading, 10), r(f.accuracy, 10),
-    f.limitKmh ?? null, f.over ? 1 : 0,
+    f.limitKmh ?? null, f.zone === 'red' || f.over ? 1 : f.zone === 'yellow' ? 2 : 0,
   ]);
 }
 
 export function unpackTrace(rows) {
-  return rows.map(([t, lat, lon, speed, heading, accuracy, limitKmh, over]) => ({
-    t, lat, lon, speed, heading, accuracy, limitKmh, over: !!over,
+  return rows.map(([t, lat, lon, speed, heading, accuracy, limitKmh, code]) => ({
+    t, lat, lon, speed, heading, accuracy, limitKmh,
+    over: code === 1, zone: code === 1 ? 'red' : code === 2 ? 'yellow' : 'ok',
   }));
 }
 

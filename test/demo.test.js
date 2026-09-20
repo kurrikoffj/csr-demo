@@ -17,7 +17,7 @@ function play(options) {
 test('clean demo drive finishes clean in both directions', () => {
   for (const direction of ['ab', 'ba']) {
     const { engine, events } = play({ direction });
-    assert.deepEqual(events, ['direction', 'started', 'finished'], direction);
+    assert.deepEqual(events, ['direction', 'started', 'caution', 'finished'], direction);
     assert.equal(engine.result().direction, direction);
     assert.equal(engine.result().clean, true);
   }

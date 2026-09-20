@@ -3,9 +3,13 @@
 
 export const DEFAULTS = Object.freeze({
   // Speed compliance
-  overToleranceKmh: 3, // "over" = limit + this (GPS speed noise)
-  warnAfterS: 1, // continuous seconds over before the first warning (two fixes at 1 Hz)
-  warnRepeatS: 10, // minimum gap between warnings
+  // Three tiers: yellow = a little over the limit for too long, red = clearly over, then disqualified.
+  overToleranceKmh: 3, // limit..limit+this is the yellow band (GPS speed noise lives here); above it is red
+  yellowAfterS: 6, // continuous seconds above the limit before the yellow caution
+  yellowRepeatS: 20, // minimum gap between yellow cautions
+  yellowDqRate: 0, // share of yellow time that feeds the disqualification clock. 0 = yellow only warns
+  warnAfterS: 1, // continuous seconds in red before the red warning (two fixes at 1 Hz)
+  warnRepeatS: 10, // minimum gap between red warnings
   dqAfterS: 5, // DQ clock trips here
   dqDrainRate: 0.5, // clock drains at this rate while under the limit
   maxAccuracyM: 25, // fixes worse than this are ignored; DQ clock freezes
@@ -35,6 +39,10 @@ export const DEFAULTS = Object.freeze({
   impreciseStartGapS: 5, // crossing interpolated over a longer gap gets flagged
   finishMinElapsedS: 60,
   finishMinDistanceFrac: 0.5, // of the straight-line A–B distance
+
+  // Guidance arrow
+  finishCountdownM: 200, // the finish arrow and metre countdown take over the HUD inside this distance
+  headingMinSpeedMs: 1.5, // below this the GPS course is unreliable; the last good one is kept
 
   // GPS pauses (browser loses GPS when the page is hidden)
   gapFlagS: 10,

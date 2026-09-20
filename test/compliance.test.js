@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Compliance } from '../src/compliance.js';
+import { withOverrides } from '../src/tunables.js';
 
 const TAGGED_50 = { kmh: 50, tier: 'tagged' };
 const ASSUMED_50 = { kmh: 50, tier: 'assumed' };
@@ -17,10 +18,50 @@ function run(steps, c = new Compliance()) {
   return { c, events, types: events.map((e) => e.type) };
 }
 
-test('within tolerance is not over', () => {
-  const { c, events } = run([[30, 52.9, TAGGED_50]]);
-  assert.equal(events.length, 0);
+test('a little over the limit: never red or disqualified, but yellow once it lasts', () => {
+  const { c, types } = run([[30, 52.9, TAGGED_50]]);
+  assert.deepEqual(types, ['caution', 'caution'], 'at 6 s, again 20 s later');
+  assert.equal(c.zone, 'yellow');
   assert.equal(c.episodes.length, 0);
+  assert.equal(c.disqualified, false);
+  assert.equal(c.dqClockS, 0);
+  assert.equal(c.yellowS, 29);
+  assert.equal(c.redS, 0);
+});
+
+test('a short spell a little over the limit is not yellow', () => {
+  const { c, events } = run([[10, 48, TAGGED_50], [5, 51, TAGGED_50], [10, 48, TAGGED_50]]);
+  assert.equal(events.length, 0);
+  assert.equal(c.zone, 'ok');
+  assert.equal(c.yellowS, 4);
+});
+
+test('exactly at the limit is fine for ever', () => {
+  const { c, events } = run([[60, 50, TAGGED_50]]);
+  assert.equal(events.length, 0);
+  assert.equal(c.yellowS, 0);
+});
+
+test('easing from red back into the band stays over the limit: yellow, without a fresh wait', () => {
+  const { c, types } = run([[2, 48, TAGGED_50], [3, 60, TAGGED_50], [6, 52, TAGGED_50]]);
+  assert.deepEqual(types, ['warning', 'cleared', 'caution']);
+  assert.equal(c.zone, 'yellow');
+  assert.equal(c.redS, 2);
+});
+
+test('yellow only warns by default; yellowDqRate makes long yellow count toward disqualification', () => {
+  assert.equal(run([[120, 52, TAGGED_50]]).c.disqualified, false);
+  const strict = run([[40, 52, TAGGED_50]], new Compliance(withOverrides({ yellowDqRate: 0.25 })));
+  assert.equal(strict.c.disqualified, true);
+  assert.equal(strict.events.find((e) => e.type === 'disqualified').t, 20000);
+  const assumed = run([[40, 52, ASSUMED_50]], new Compliance(withOverrides({ yellowDqRate: 1 })));
+  assert.equal(assumed.c.disqualified, false, 'assumed limits never disqualify');
+});
+
+test('weak GPS clears the colour on screen but keeps the clocks', () => {
+  const { c } = run([[3, 60, TAGGED_50], [2, 60, TAGGED_50, false]]);
+  assert.equal(c.zone, 'ok');
+  assert.equal(c.dqClockS, 2);
 });
 
 test('a single-fix blip does nothing; two seconds over warns; neither disqualifies', () => {
