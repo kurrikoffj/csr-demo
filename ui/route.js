@@ -107,6 +107,7 @@ export function mountRoute(container, app) {
     if (draft.a.lat == null || draft.b.lat == null) return 'Both markers need a place on the map.';
     const d = distanceM(draft.a, draft.b);
     if (d < tun.minMarkerSeparationM) return `The markers are ${Math.round(d)} m apart. They need at least ${tun.minMarkerSeparationM} m between them.`;
+    if (d > tun.maxMarkerSeparationM) return `The markers are ${Math.round(d / 1000)} km apart. Zoom in and place both on your own streets.`;
     return null;
   }
 

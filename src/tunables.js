@@ -26,6 +26,7 @@ export const DEFAULTS = Object.freeze({
   finalizationRadiusM: 40,
   minRadiusM: 30,
   minMarkerSeparationM: 500,
+  maxMarkerSeparationM: 150000, // a mis-tap on a zoomed-out map must not download half a continent
 
   // Start / finish
   startMinSpeedMs: 2.5, // ~9 km/h

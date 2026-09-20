@@ -27,3 +27,6 @@ Browser demo of a solo commute time-trial: drive A→B on real roads, beat your 
 
 ## Browser constraints (iOS Safari)
 GPS only while the page is visible and the screen is on; audio must be unlocked by a tap (Arm); Wake Lock in Home Screen mode needs iOS 18.4+.
+
+## Status (2026-09-20)
+Engine, screens and publishing done; live at the Pages URL. Verified in a desktop browser with replayed drives over real OSM data. Not yet verified on an iPhone: cue audibility over music and with the ringer off, screen wake lock, GPS speed readings. Next: owner's parked test, first commute, then tune from exported traces (limit-drop heads-up, live splits vs. best, per-road limit overrides).
