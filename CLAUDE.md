@@ -31,8 +31,9 @@ Browser demo of a solo commute time-trial: drive A→B on real roads, beat your 
 ## Browser constraints (iOS Safari)
 GPS only while the page is visible and the screen is on; audio must be unlocked by a tap (Arm); Wake Lock in Home Screen mode needs iOS 18.4+.
 
-## Status (2026-09-20, after playtest 1)
-Live at the Pages URL. Owner has driven it on an iPhone. Added from his notes: guidance arrow (to the start circle once armed, metre countdown over the last 200 m to the finish line), yellow tier (a little over the limit for a sustained time; warns only unless `yellowDqRate` > 0), multiple routes with a route + direction picker on Drive. Still unverified on the phone: cue audibility over music / ringer off, wake lock holding for a whole drive. Next: tune from exported traces; limit-drop heads-up, live splits vs. best, per-road limit overrides.
+## Status (2026-09-20)
+Live at the Pages URL, build `.6`. The owner has driven it and is playtesting. Built so far: run engine, OSM limits with tiers, yellow/red/disqualified, guidance arrow (GPS course in the car, compass on foot), multiple routes, name-only players with feedback and import of a friend's file. Not yet verified on an iPhone: cue audibility over music, wake lock for a whole drive, compass after permission, share sheet with a file. The working notes live in `notes/` on the owner's machine (gitignored): start with `notes/handoff.md`.
 
 ## Data model
-Routes: `[{ id, rev, a, b }]`, marker `{ name, lat, lon, activationM, finalizationM }`. Road data is stored per route (`roads:<id>`). Runs carry `routeId`, `routeRev`, `direction`, `bucket`; a best is the fastest clean run for that key inside the record window. Traces are packed rows with a zone column (0 ok, 1 red, 2 yellow).
+Players: `[{ id, name, createdAt, imported? }]`, a name and nothing else (no server, no password). Routes and runs carry `playerId`; `app.routes` / `app.runs` are already filtered to the active player. Export files are per player; `planImport` in `src/profile.js` decides whether a file is your own backup or another player to add.
+Routes: `[{ id, rev, playerId, a, b }]`, marker `{ name, lat, lon, activationM, finalizationM }`. Road data is stored per route (`roads:<id>`). Runs carry `routeId`, `routeRev`, `direction`, `bucket`; a best is the fastest clean run for that key inside the record window. Traces are packed rows with a zone column (0 ok, 1 red, 2 yellow).
