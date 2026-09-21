@@ -208,7 +208,7 @@ export function mountDrive(container, app) {
     els.gps.textContent = hud.accuracyM == null ? ''
       : `GPS ±${Math.round(hud.accuracyM)} m${weak ? ` · too rough to start the clock, needs ±${app.tunables.maxAccuracyM} m. Usually better outdoors.` : ''}`;
     setRoundel(els.roundel, hud.limit);
-    els.speed.textContent = hud.speedKmh == null ? '–' : String(Math.round(hud.speedKmh));
+    els.speed.textContent = hud.shownKmh == null ? '–' : String(hud.shownKmh);
   }
 
   // ----- Running -----
@@ -263,9 +263,12 @@ export function mountDrive(container, app) {
       ? 'Screen may sleep · keep it on'
       : `${s.demo ? 'DEMO 8× · ' : ''}${BUCKET_LABELS[s.engine.bucket] || ''}`;
     setRoundel(els.roundel, hud.limit);
-    setDigits(els.speed, hud.speedKmh == null ? '–' : String(Math.round(hud.speedKmh)));
+    setDigits(els.speed, hud.shownKmh == null ? '–' : String(hud.shownKmh));
+    // Over the limit shows at once on the digits; the yellow screen and tone wait for it to last.
+    els.speed.classList.toggle('above', hud.aboveLimit && hud.zone === 'ok');
     els.road.textContent = hud.gps === 'weak' ? `Weak GPS (${Math.round(hud.accuracyM)} m)`
-      : hud.zone === 'yellow' ? 'A little over the limit' : hud.wayName || ' ';
+      : hud.zone === 'yellow' ? 'Over the limit too long'
+        : hud.aboveLimit && hud.zone === 'ok' ? 'A little over the limit' : hud.wayName || ' ';
     setDigits(els.clock, formatDuration(hud.elapsedS));
     els.banner.hidden = !hud.disqualified;
     els.bar.classList.toggle('on', !hud.disqualified && hud.dqProgress > 0);

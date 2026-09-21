@@ -5,7 +5,8 @@ export const DEFAULTS = Object.freeze({
   // Speed compliance
   // Three tiers: yellow = a little over the limit for too long, red = clearly over, then disqualified.
   overToleranceKmh: 3, // limit..limit+this is the yellow band (GPS speed noise lives here); above it is red
-  yellowAfterS: 6, // continuous seconds above the limit before the yellow caution
+  yellowAfterS: 6, // seconds above the limit before the yellow caution. They add up: see yellowDrainRate
+  yellowDrainRate: 0.5, // the yellow clock drains at this rate while at or under the limit, so a brief dip does not wipe it
   yellowRepeatS: 20, // minimum gap between yellow cautions
   yellowDqRate: 0, // share of yellow time that feeds the disqualification clock. 0 = yellow only warns
   warnAfterS: 1, // continuous seconds in red before the red warning (two fixes at 1 Hz)

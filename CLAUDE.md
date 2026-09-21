@@ -3,7 +3,7 @@
 Browser demo of a solo commute time-trial: drive A→B on real roads, beat your own best per time-of-day bucket, never exceed the posted limit. Static site on GitHub Pages, played in iPhone Safari.
 
 ## Hard rules
-- **The repo is public.** Never commit real GPS traces, marker coordinates, or anything from `notes/` or `traces/` (both gitignored). Test fixtures are synthetic.
+- **The repo is public.** Never commit real GPS traces, marker coordinates, or anything from `notes/`, `traces/` or `marketing/` (all gitignored). Test fixtures are synthetic.
 - **No framework, no build step, no runtime dependencies.** The folder is the site. Plain ES modules.
 - `src/` is pure logic with no DOM or browser APIs, so it runs under Node tests. Browser code lives in `ui/` and `app.js`.
 - Every threshold lives in `src/tunables.js` and is editable in the Tuning screen. No magic numbers elsewhere.
@@ -31,8 +31,8 @@ Browser demo of a solo commute time-trial: drive A→B on real roads, beat your 
 ## Browser constraints (iOS Safari)
 GPS only while the page is visible and the screen is on; audio must be unlocked by a tap (Arm); Wake Lock in Home Screen mode needs iOS 18.4+.
 
-## Status (2026-09-20)
-Live at the Pages URL, build `.6`. The owner has driven it and is playtesting. Built so far: run engine, OSM limits with tiers, yellow/red/disqualified, guidance arrow (GPS course in the car, compass on foot), multiple routes, name-only players with feedback and import of a friend's file. Not yet verified on an iPhone: cue audibility over music, wake lock for a whole drive, compass after permission, share sheet with a file. The working notes live in `notes/` on the owner's machine (gitignored): start with `notes/handoff.md`.
+## Status (2026-09-21)
+Live at the Pages URL, build `2026-09-21.1`. The owner has driven it twice and is playtesting. Built so far: run engine, OSM limits with tiers, yellow/red/disqualified (judged on the whole km/h the HUD shows; yellow seconds add up on a leaky clock), guidance arrow (GPS course in the car, compass on foot), multiple routes, name-only players with feedback and import of a friend's file. Not yet verified on an iPhone: cue audibility over music, wake lock for a whole drive, compass after permission, share sheet with a file. The working notes live in `notes/` on the owner's machine (gitignored): start with `notes/handoff.md`.
 
 ## Data model
 Players: `[{ id, name, createdAt, imported? }]`, a name and nothing else (no server, no password). Routes and runs carry `playerId`; `app.routes` / `app.runs` are already filtered to the active player. Export files are per player; `planImport` in `src/profile.js` decides whether a file is your own backup or another player to add.

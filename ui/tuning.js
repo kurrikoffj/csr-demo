@@ -10,8 +10,9 @@ import { BUILD } from '../version.js';
 // [key, label, unit, help]
 const GROUPS = [
   ['Speeding', [
-    ['overToleranceKmh', 'Yellow band width', 'km/h', 'From the limit up to limit + this is yellow. Above it is red. GPS speed wobbles a little, which is why the band exists.'],
-    ['yellowAfterS', 'Yellow caution after', 's', 'Continuous seconds above the limit before the yellow caution.'],
+    ['overToleranceKmh', 'Yellow band width', 'km/h', 'From the limit up to limit + this is yellow. Above it is red. GPS speed wobbles a little, which is why the band exists. Everything is judged on the whole number the screen shows.'],
+    ['yellowAfterS', 'Yellow caution after', 's', 'Seconds above the limit before the yellow screen and tone. They add up: a moment at the limit does not restart the count. The speed digits turn yellow at once.'],
+    ['yellowDrainRate', 'Yellow count runs down at', '×', 'While at or under the limit. At 0.5, clearing a full count takes twice as long as building it.'],
     ['yellowRepeatS', 'Repeat yellow caution every', 's', ''],
     ['yellowDqRate', 'Yellow counts toward disqualification', '×', '0 means yellow only warns. At 0.25, every 4 s of yellow counts as 1 s of red.'],
     ['warnAfterS', 'Red warning after', 's', 'Seconds in red before the warning sounds.'],

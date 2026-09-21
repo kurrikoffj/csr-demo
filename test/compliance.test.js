@@ -1,21 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Compliance } from '../src/compliance.js';
+import { Compliance, shownKmh } from '../src/compliance.js';
 import { withOverrides } from '../src/tunables.js';
 
 const TAGGED_50 = { kmh: 50, tier: 'tagged' };
 const ASSUMED_50 = { kmh: 50, tier: 'assumed' };
 
 // One fix per second. Each step is [seconds, km/h, limit, usable?].
-function run(steps, c = new Compliance()) {
+// Pass an earlier result's `c` and `t` to carry the same drive on.
+function run(steps, c = new Compliance(), t = 0) {
   const events = [];
-  let t = 0;
   for (const [seconds, kmh, limit, usable = true] of steps) {
     for (let i = 0; i < seconds; i++, t += 1000) {
       events.push(...c.update({ t, speedMs: kmh / 3.6, limit, usable }));
     }
   }
-  return { c, events, types: events.map((e) => e.type) };
+  return { c, t, events, types: events.map((e) => e.type) };
 }
 
 test('a little over the limit: never red or disqualified, but yellow once it lasts', () => {
@@ -34,6 +34,54 @@ test('a short spell a little over the limit is not yellow', () => {
   assert.equal(events.length, 0);
   assert.equal(c.zone, 'ok');
   assert.equal(c.yellowS, 4);
+});
+
+// Playtest 3: 1-2 km/h over for long stretches and no yellow, because one reading at the limit
+// restarted a six-second count. The seconds now add up.
+test('hovering a little over the limit turns yellow even when single readings dip to the limit', () => {
+  const hover = [];
+  for (let i = 0; i < 8; i++) hover.push([3, 51.5, TAGGED_50], [1, 49.8, TAGGED_50]);
+  const { c, types } = run(hover);
+  assert.equal(types[0], 'caution');
+  assert.ok(c.cautions >= 1);
+  assert.equal(c.disqualified, false);
+});
+
+test('a junction where the map offers a faster road for one fix does not wipe the yellow clock', () => {
+  const { types, events } = run([[5, 52, TAGGED_50], [1, 52, { kmh: 70, tier: 'tagged' }], [3, 52, TAGGED_50]]);
+  assert.deepEqual(types, ['caution']);
+  assert.equal(events[0].t, 8000);
+});
+
+test('the verdict uses the speed the driver sees: whole km/h', () => {
+  assert.equal(shownKmh(50.4 / 3.6), 50);
+  assert.equal(shownKmh(50.6 / 3.6), 51);
+  const onTheDot = run([[120, 50.4, TAGGED_50]]);
+  assert.equal(onTheDot.events.length, 0, 'reads 50 in a 50 zone');
+  assert.equal(onTheDot.c.yellowS, 0);
+  assert.equal(run([[10, 53.4, TAGGED_50]]).c.redS, 0, 'reads 53: still the band');
+  assert.equal(run([[10, 53.6, TAGGED_50]]).c.redS, 9, 'reads 54: red');
+});
+
+test('over the limit is known at once, before any caution', () => {
+  const { c, t, events } = run([[3, 48, TAGGED_50], [2, 51, TAGGED_50]]);
+  assert.equal(c.aboveNow, true);
+  assert.equal(c.zone, 'ok');
+  assert.equal(events.length, 0);
+  run([[1, 48, TAGGED_50]], c, t);
+  assert.equal(c.aboveNow, false);
+});
+
+test('slowing down clears yellow at once; a short dip does not buy a fresh six seconds, a long one does', () => {
+  let { c, t } = run([[10, 52, TAGGED_50]]);
+  assert.equal(c.zone, 'yellow');
+  ({ t } = run([[3, 49, TAGGED_50]], c, t));
+  assert.equal(c.zone, 'ok');
+  assert.equal(c.yellowClockS, 5, 'two under-under seconds at half rate');
+  ({ t } = run([[3, 52, TAGGED_50]], c, t));
+  assert.equal(c.zone, 'yellow', 'back within a couple of seconds');
+  run([[14, 49, TAGGED_50], [5, 52, TAGGED_50]], c, t);
+  assert.equal(c.zone, 'ok', 'clean slate after long enough under the limit');
 });
 
 test('exactly at the limit is fine for ever', () => {

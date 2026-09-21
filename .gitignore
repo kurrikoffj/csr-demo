@@ -1,6 +1,7 @@
 # Private — never publish (repo is public)
 notes/
 traces/
+marketing/
 
 # Local tooling
 .claude/

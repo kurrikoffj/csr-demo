@@ -1,14 +1,21 @@
 import { DEFAULTS, KMH_PER_MS } from './tunables.js';
 
+// The speed the driver sees: whole km/h. Every tier is judged on this number, so the digits
+// on the HUD and the verdict never disagree (50.4 reads "50" and is fine; 50.6 reads "51" and is over).
+export const shownKmh = (speedMs) => Math.round(speedMs * KMH_PER_MS);
+
 // Speed tiers for one run:
-//   yellow  a little over the limit (inside the tolerance band) for a sustained time. Warns;
-//           only feeds the disqualification clock if yellowDqRate says so.
+//   yellow  a little over the limit (inside the tolerance band) for too long. The seconds add up
+//           on a leaky clock, so a one-fix dip to the limit or a junction does not wipe them.
+//           Warns; only feeds the disqualification clock if yellowDqRate says so.
 //   red     over limit + tolerance. Warns after a moment; sustained red on a *tagged* limit disqualifies.
 // Assumed limits never disqualify; unknown limits are not enforced.
 export class Compliance {
   constructor(tunables = DEFAULTS) {
     this.tun = tunables;
     this.zone = 'ok'; // 'ok' | 'yellow' | 'red', what the HUD shows right now
+    this.aboveNow = false; // the shown speed is over the limit at this fix, however briefly
+    this.yellowClockS = 0; // fills while over the limit, drains while not; yellow at yellowAfterS
     this.dqClockS = 0;
     this.disqualified = false;
     this.dqAt = null;
@@ -20,7 +27,6 @@ export class Compliance {
     this._open = null;
     this._lastT = null;
     this._prev = 'ok'; // 'ok' | 'band' | 'red' at the previous usable fix
-    this._aboveSince = null;
     this._lastWarnT = null;
     this._lastCautionT = null;
   }
@@ -33,6 +39,7 @@ export class Compliance {
     if (!usable || speedMs == null) {
       this._lastT = t;
       this.zone = 'ok';
+      this.aboveNow = false;
       return events;
     }
     const tun = this.tun;
@@ -40,18 +47,25 @@ export class Compliance {
     this._lastT = t;
 
     const speedKmh = speedMs * KMH_PER_MS;
-    const above = !!limit && speedKmh > limit.kmh;
-    const now = !above ? 'ok' : speedKmh > limit.kmh + tun.overToleranceKmh ? 'red' : 'band';
+    const shown = shownKmh(speedMs);
+    const above = !!limit && shown > limit.kmh;
+    const now = !above ? 'ok' : shown > limit.kmh + tun.overToleranceKmh ? 'red' : 'band';
     const tagged = limit?.tier === 'tagged';
+    this.aboveNow = above;
 
-    // The time between two fixes counts for the milder of their two states.
-    if (this._prev === 'red' && now === 'red') {
-      this.redS += dt;
-      if (tagged) this.dqClockS += dt;
-    } else if (this._prev !== 'ok' && now !== 'ok') {
-      this.yellowS += dt;
-      if (tagged) this.dqClockS += dt * tun.yellowDqRate;
+    // The time between two fixes counts for the milder of their two states;
+    // between an over fix and an under fix, no clock moves.
+    if (this._prev !== 'ok' && now !== 'ok') {
+      this.yellowClockS = Math.min(tun.yellowAfterS, this.yellowClockS + dt);
+      if (this._prev === 'red' && now === 'red') {
+        this.redS += dt;
+        if (tagged) this.dqClockS += dt;
+      } else {
+        this.yellowS += dt;
+        if (tagged) this.dqClockS += dt * tun.yellowDqRate;
+      }
     } else if (this._prev === 'ok' && now === 'ok') {
+      this.yellowClockS = Math.max(0, this.yellowClockS - dt * tun.yellowDrainRate);
       this.dqClockS = Math.max(0, this.dqClockS - dt * tun.dqDrainRate);
     }
 
@@ -77,9 +91,7 @@ export class Compliance {
       events.push({ type: 'cleared', t });
     }
 
-    if (above) this._aboveSince ??= t;
-    else this._aboveSince = null;
-    const sustained = above && (t - this._aboveSince) / 1000 >= tun.yellowAfterS;
+    const sustained = this.yellowClockS >= tun.yellowAfterS;
     this.zone = now === 'red' ? 'red' : now === 'band' && sustained ? 'yellow' : 'ok';
     if (this.zone === 'yellow') {
       const sinceCautionS = this._lastCautionT == null ? Infinity : (t - this._lastCautionT) / 1000;

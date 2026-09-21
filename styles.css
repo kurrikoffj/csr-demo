@@ -236,6 +236,7 @@ button.plate.route-pick .data { font-family: var(--data); font-size: 15px; }
 .hud-main .roundel { --d: min(38vw, 190px); }
 .speed { text-align: right; }
 .speed .display { font-size: min(44vw, 230px); line-height: 0.8; padding-top: 0.12em; }
+.speed .digits.above { color: var(--sign-yellow); }
 .speed .unit { font-size: 18px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.8; }
 
 body[data-state="over"] .hud-main .roundel { animation: pulse 0.6s ease-in-out infinite alternate; }

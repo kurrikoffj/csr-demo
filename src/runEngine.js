@@ -6,7 +6,7 @@
 import { DEFAULTS, KMH_PER_MS } from './tunables.js';
 import { distanceM, bearingDeg, circleCrossing } from './geo.js';
 import { bucketFor } from './buckets.js';
-import { Compliance } from './compliance.js';
+import { Compliance, shownKmh } from './compliance.js';
 
 export class RunEngine {
   constructor({ route, tunables = DEFAULTS, matcher = null, onEvent = () => {} }) {
@@ -255,11 +255,13 @@ export class RunEngine {
       gps: !fix ? 'none' : usable ? 'ok' : 'weak',
       accuracyM: fix?.accuracy ?? null,
       speedKmh: fix?.speed != null ? fix.speed * KMH_PER_MS : null,
+      shownKmh: fix?.speed != null ? shownKmh(fix.speed) : null, // the whole number the rules judge
       headingDeg: this.lastHeading,
       headingAgeS: this.lastHeadingT == null ? null : Math.max(0, (now - this.lastHeadingT) / 1000),
       limit: this.lastMatch?.limit ?? null,
       wayName: this.lastMatch?.way?.name ?? '',
       zone: this.compliance.zone,
+      aboveLimit: this.compliance.aboveNow, // over the limit right now, before any caution
       over: this.compliance.isOver,
       dqProgress: this.compliance.dqProgress,
       disqualified: this.compliance.disqualified,
