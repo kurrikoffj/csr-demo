@@ -135,8 +135,12 @@ export const store = {
     });
     if (plan.created) await this.savePlayers([...(await this.getPlayers()), plan.player]);
     if (plan.applySettings) {
-      const mine = await this.getSettings(); // which player and route are open stays a matter of this phone
-      await this.saveSettings({ ...plan.settings, activePlayerId: mine.activePlayerId, activeRouteByPlayer: mine.activeRouteByPlayer });
+      // Which player and route are open, the speed unit and Presentation mode stay a matter of this phone.
+      const mine = await this.getSettings();
+      await this.saveSettings({
+        ...plan.settings, activePlayerId: mine.activePlayerId, activeRouteByPlayer: mine.activeRouteByPlayer,
+        speedUnit: mine.speedUnit, presentation: mine.presentation,
+      });
     }
     for (const route of plan.routes) await this.saveRoute(route);
     for (const run of plan.runs) {

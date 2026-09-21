@@ -3,6 +3,7 @@
 import { withOverrides } from './src/tunables.js';
 import { WayIndex, coverage } from './src/osm.js';
 import { ownedBy } from './src/profile.js';
+import { defaultUnit } from './src/units.js';
 import { store } from './ui/store.js';
 import { Cues } from './ui/audio.js';
 import { mountDrive } from './ui/drive.js';
@@ -33,6 +34,19 @@ const app = {
   lastResult: null,
   pendingReplay: null,
   direction: {}, // route id → direction picked on the Drive screen
+
+  // Speed unit on this phone: 'kmh' | 'mph'. Until it is picked in Tuning it follows where the phone seems to be.
+  get unit() {
+    if (this.settings.speedUnit) return this.settings.speedUnit;
+    let timeZone = '';
+    try { timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* unknown */ }
+    return defaultUnit({ languages: navigator.languages?.length ? navigator.languages : [navigator.language], timeZone });
+  },
+
+  // Presentation mode: draw nothing that says where a place is. Changes what is drawn, never what is stored or judged.
+  get presenting() {
+    return !!this.settings.presentation;
+  },
 
   async reload() {
     this.settings = await store.getSettings();
@@ -75,6 +89,14 @@ const app = {
 
 let mounted = null;
 
+// The strip across the top: a mode that changes what the screen shows must never be forgotten.
+function flags() {
+  const el = document.getElementById('flags');
+  el.textContent = app.presenting ? 'Presentation mode on' : '';
+  el.hidden = !app.presenting;
+  document.body.classList.toggle('flagged', app.presenting);
+}
+
 function show() {
   const hash = location.hash.replace(/^#/, '') || 'drive';
   const [name, arg] = hash.split('/');
@@ -85,6 +107,7 @@ function show() {
   // Nobody has said who they are yet: that comes first.
   const welcome = !app.player || name === 'player';
   document.body.classList.toggle('welcome', !app.player);
+  flags();
   const tab = name === 'run' ? 'history' : name === 'feedback' || name === 'player' ? 'tuning' : name;
   for (const a of tabs.querySelectorAll('a')) {
     if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page');
@@ -107,6 +130,7 @@ async function main() {
     console.error('Could not read stored data', err);
   }
   app.show = show;
+  app.refreshFlags = flags;
   window.addEventListener('hashchange', show);
   show();
   if ('serviceWorker' in navigator && location.protocol === 'https:') {

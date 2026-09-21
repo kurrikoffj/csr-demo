@@ -15,7 +15,7 @@ const ABORT_TEXT = {
 };
 
 export class Session {
-  // app: { route, index, tunables, runs, store, cues }. onChange: redraw. onEnd(result, summary, fixes).
+  // app: { route, index, tunables, unit, runs, store, cues, player }. onChange: redraw. onEnd(result, summary, fixes).
   constructor(app, { onChange, onEnd }) {
     this.app = app;
     this.onChange = onChange;
@@ -24,6 +24,7 @@ export class Session {
       route: app.route,
       tunables: app.tunables,
       matcher: app.index ? new Matcher(app.index, app.tunables) : null,
+      unit: app.unit,
       onEvent: (evt) => this._onEvent(evt),
     });
     this.source = null;

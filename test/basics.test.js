@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { distanceM, bearingDeg, angleDiffDeg, projectOnSegment, circleCrossing, bboxAround } from '../src/geo.js';
 import { bucketFor } from '../src/buckets.js';
 import { limitFromTags, wayLimit, overpassQuery } from '../src/osm.js';
+import { shownLimit } from '../src/units.js';
 import { formatDuration, formatDelta, standingText } from '../src/phrases.js';
 import { syntheticDrive } from '../src/replay.js';
 import { route } from '../src/router.js';
@@ -58,12 +59,35 @@ test('buckets: weekday and weekend edges', () => {
 
 test('osm: maxspeed parsing', () => {
   assert.deepEqual(limitFromTags({ maxspeed: '50' }), { kmh: 50, tier: 'tagged', approx: false });
-  assert.equal(limitFromTags({ maxspeed: '30 mph' }).kmh, 48);
   assert.equal(limitFromTags({ maxspeed: 'EE:urban' }).kmh, 50);
   assert.equal(limitFromTags({ 'source:maxspeed': 'EE:rural' }).kmh, 90);
   assert.equal(limitFromTags({ 'zone:maxspeed': 'EE:30' }).kmh, 30);
   assert.equal(limitFromTags({ maxspeed: 'signals' }), null);
   assert.equal(limitFromTags({ highway: 'tertiary' }), null);
+});
+
+test('osm: a limit signed in mph is never lowered by the conversion, and keeps its own number', () => {
+  for (const sign of [20, 25, 30, 40, 50, 60, 70]) {
+    const limit = limitFromTags({ maxspeed: `${sign} mph` });
+    assert.equal(limit.mph, sign, `${sign} mph keeps its number`);
+    assert.ok(limit.kmh >= sign * 1.609344 - 1e-9, `${sign} mph is ${sign * 1.609344} km/h, got ${limit.kmh}`);
+    assert.equal(shownLimit(limit, 'mph'), sign, 'the mph roundel shows the sign');
+    assert.ok(shownLimit(limit, 'kmh') >= limit.kmh, 'the km/h roundel is never below the sign');
+    assert.ok(shownLimit(limit, 'kmh') - limit.kmh < 1, 'and never a whole km/h above it');
+  }
+  assert.equal(shownLimit(limitFromTags({ maxspeed: '30 mph' }), 'kmh'), 49, '30 mph is 48.3 km/h: 48 would be below the sign');
+  assert.equal(limitFromTags({ maxspeed: '30mph' }).mph, 30);
+  assert.equal(limitFromTags({ maxspeed: '50' }).mph, undefined, 'a km/h sign has no mph number');
+  // Mixed values still resolve to the highest, and the winner keeps its unit.
+  assert.equal(limitFromTags({ maxspeed: '30 mph', 'maxspeed:conditional': '20 mph @ (Mo-Fr 08:00-09:00)' }).mph, 30);
+});
+
+test('osm: zone and national-limit shorthand in mph countries is read as mph', () => {
+  assert.equal(limitFromTags({ 'zone:maxspeed': 'GB:20' }).mph, 20, 'a 20 zone in Britain is 20 mph, not 20 km/h');
+  assert.equal(limitFromTags({ 'maxspeed:type': 'GB:nsl_single' }).mph, 60);
+  assert.equal(limitFromTags({ 'maxspeed:type': 'GB:nsl_dual' }).mph, 70);
+  assert.equal(limitFromTags({ 'source:maxspeed': 'US:urban' }), null, 'metric defaults are not applied to mph countries');
+  assert.equal(limitFromTags({ 'zone:maxspeed': 'DE:30' }).kmh, 30);
 });
 
 test('osm: several values resolve to the highest and are marked approximate', () => {

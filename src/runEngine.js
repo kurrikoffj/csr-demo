@@ -7,11 +7,14 @@ import { DEFAULTS, KMH_PER_MS } from './tunables.js';
 import { distanceM, bearingDeg, circleCrossing } from './geo.js';
 import { bucketFor } from './buckets.js';
 import { Compliance, shownKmh } from './compliance.js';
+import { shownSpeed, shownLimit } from './units.js';
 
 export class RunEngine {
-  constructor({ route, tunables = DEFAULTS, matcher = null, onEvent = () => {} }) {
+  // unit: 'kmh' | 'mph', the unit on the driver's screen. Speeding is judged in it (see units.js).
+  constructor({ route, tunables = DEFAULTS, matcher = null, onEvent = () => {}, unit = 'kmh' }) {
     this.route = route;
     this.tun = tunables;
+    this.unit = unit;
     this.matcher = matcher;
     this.onEvent = onEvent;
     this.state = 'idle';
@@ -24,7 +27,7 @@ export class RunEngine {
     this.preferred = null; // direction picked on screen; standing in a start circle overrides it
     this.lastHeading = null; // last reliable GPS course, kept while stopped so the guidance arrow holds still
     this.lastHeadingT = null;
-    this.compliance = new Compliance(this.tun);
+    this.compliance = new Compliance(this.tun, this.unit);
     this.trace = [];
     this.distanceM = 0;
     this.startT = null;
@@ -218,6 +221,7 @@ export class RunEngine {
       routeRev: this.route.rev,
       direction: this.direction,
       bucket: this.bucket,
+      unit: this.unit,
       startT: this.startT,
       endT: this.endT,
       durationS: this.endT == null ? null : (this.endT - this.startT) / 1000,
@@ -255,7 +259,10 @@ export class RunEngine {
       gps: !fix ? 'none' : usable ? 'ok' : 'weak',
       accuracyM: fix?.accuracy ?? null,
       speedKmh: fix?.speed != null ? fix.speed * KMH_PER_MS : null,
-      shownKmh: fix?.speed != null ? shownKmh(fix.speed) : null, // the whole number the rules judge
+      shownKmh: fix?.speed != null ? shownKmh(fix.speed) : null,
+      unit: this.unit,
+      shownSpeed: fix?.speed != null ? shownSpeed(fix.speed, this.unit) : null, // the whole number the rules judge
+      shownLimit: this.lastMatch?.limit ? shownLimit(this.lastMatch.limit, this.unit) : null, // and the one it is judged against
       headingDeg: this.lastHeading,
       headingAgeS: this.lastHeadingT == null ? null : Math.max(0, (now - this.lastHeadingT) / 1000),
       limit: this.lastMatch?.limit ?? null,

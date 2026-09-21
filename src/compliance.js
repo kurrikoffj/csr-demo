@@ -1,8 +1,10 @@
 import { DEFAULTS, KMH_PER_MS } from './tunables.js';
+import { shownSpeed, shownLimit, bandWidth } from './units.js';
 
-// The speed the driver sees: whole km/h. Every tier is judged on this number, so the digits
+// The speed the driver sees: a whole number. Every tier is judged on this number, so the digits
 // on the HUD and the verdict never disagree (50.4 reads "50" and is fine; 50.6 reads "51" and is over).
-export const shownKmh = (speedMs) => Math.round(speedMs * KMH_PER_MS);
+// In mph the same holds in whole mph against the roundel's whole mph: see units.js.
+export const shownKmh = (speedMs) => shownSpeed(speedMs, 'kmh');
 
 // Speed tiers for one run:
 //   yellow  a little over the limit (inside the tolerance band) for too long. The seconds add up
@@ -11,8 +13,9 @@ export const shownKmh = (speedMs) => Math.round(speedMs * KMH_PER_MS);
 //   red     over limit + tolerance. Warns after a moment; sustained red on a *tagged* limit disqualifies.
 // Assumed limits never disqualify; unknown limits are not enforced.
 export class Compliance {
-  constructor(tunables = DEFAULTS) {
+  constructor(tunables = DEFAULTS, unit = 'kmh') {
     this.tun = tunables;
+    this.unit = unit; // 'kmh' | 'mph': the unit on the driver's screen, which is the unit of judgement
     this.zone = 'ok'; // 'ok' | 'yellow' | 'red', what the HUD shows right now
     this.aboveNow = false; // the shown speed is over the limit at this fix, however briefly
     this.yellowClockS = 0; // fills while over the limit, drains while not; yellow at yellowAfterS
@@ -31,7 +34,7 @@ export class Compliance {
     this._lastCautionT = null;
   }
 
-  // limit: { kmh, tier } | null. usable: false freezes the clocks (bad GPS, no speed).
+  // limit: { kmh, tier, mph? } | null. usable: false freezes the clocks (bad GPS, no speed).
   // ctx: { wayId, wayName, lat, lon } recorded on a red episode.
   // Returns events: 'caution' | 'warning' | 'disqualified' | 'cleared'.
   update({ t, speedMs, limit, usable = true, ctx = {} }) {
@@ -47,9 +50,10 @@ export class Compliance {
     this._lastT = t;
 
     const speedKmh = speedMs * KMH_PER_MS;
-    const shown = shownKmh(speedMs);
-    const above = !!limit && shown > limit.kmh;
-    const now = !above ? 'ok' : shown > limit.kmh + tun.overToleranceKmh ? 'red' : 'band';
+    const shown = shownSpeed(speedMs, this.unit);
+    const onSign = limit ? shownLimit(limit, this.unit) : null;
+    const above = !!limit && shown > onSign;
+    const now = !above ? 'ok' : shown > onSign + bandWidth(tun.overToleranceKmh, this.unit) ? 'red' : 'band';
     const tagged = limit?.tier === 'tagged';
     this.aboveNow = above;
 
@@ -72,7 +76,7 @@ export class Compliance {
     if (now === 'red') {
       if (!this._open) {
         this._open = {
-          tStart: t, tEnd: t, limitKmh: limit.kmh, tier: limit.tier,
+          tStart: t, tEnd: t, limitKmh: limit.kmh, limitMph: limit.mph ?? null, tier: limit.tier,
           maxSpeedKmh: speedKmh, ...ctx,
         };
         this.episodes.push(this._open);

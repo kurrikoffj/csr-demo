@@ -1,9 +1,11 @@
 // Route editor: place the two markers, set the circle sizes, download speed limits for the area.
 // arg is a route id, or 'new'.
 
-import { h, fmtKm } from './dom.js';
+import { h, fmtDist } from './dom.js';
 import { distanceM } from '../src/geo.js';
+import { isPrivate, hasPlaces } from '../src/privacy.js';
 import { downloadRoads } from './limits.js';
+import { guideFor } from './guide.js';
 
 const EUROPE = { center: [54, 15], zoom: 4 };
 
@@ -14,15 +16,16 @@ export function mountRoute(container, app, arg) {
     location.hash = '#route';
     return { unmount() {} };
   }
-  const first = app.routes[0];
-  // Working copy; nothing changes until Save.
+  const first = app.routes.find(hasPlaces);
+  // Working copy; nothing changes until Save. A new marker is a private place until it is unticked.
   const draft = {
-    a: saved ? { ...saved.a } : { name: first ? first.a.name : 'Home', lat: null, lon: null },
-    b: saved ? { ...saved.b } : { name: first ? 'Finish' : 'Work', lat: null, lon: null },
+    a: saved ? { ...saved.a, private: isPrivate(saved.a) } : { name: first ? first.a.name : 'Home', lat: null, lon: null, private: true },
+    b: saved ? { ...saved.b, private: isPrivate(saved.b) } : { name: first ? 'Finish' : 'Work', lat: null, lon: null, private: true },
     activationM: saved?.a.activationM ?? tun.activationRadiusM,
     finalizationM: saved?.a.finalizationM ?? tun.finalizationRadiusM,
   };
-  let placing = saved ? null : 'a';
+  // A route from a file with its ends hidden has markers to place, like a new one.
+  let placing = draft.a.lat == null ? 'a' : draft.b.lat == null ? 'b' : null;
   let busy = false;
   const layers = { a: null, b: null };
 
@@ -31,7 +34,7 @@ export function mountRoute(container, app, arg) {
   for (const route of app.routes) {
     if (route.id === saved?.id) continue;
     for (const m of [route.a, route.b]) {
-      if (!known.some((k) => distanceM(k, m) < 1)) known.push(m);
+      if (m.lat != null && !known.some((k) => distanceM(k, m) < 1)) known.push(m);
     }
   }
 
@@ -45,6 +48,9 @@ export function mountRoute(container, app, arg) {
     oninput: (e) => { draft[key].name = e.target.value.trim() || key.toUpperCase(); },
   }));
   const placeBtn = (key) => h('button', { class: 'plate dark small', onclick: () => { placing = key; update(); } }, `Move ${key.toUpperCase()}`);
+  const privateBox = (key) => h('label', { class: 'field' },
+    h('span', {}, `${key.toUpperCase()} is a private place`),
+    h('input', { type: 'checkbox', checked: draft[key].private, onchange: (e) => { draft[key].private = e.target.checked; } }));
   const slider = (field, label, help) => {
     const out = h('span', { class: 'data' }, `${draft[field]} m`);
     return h('label', { class: 'field wide' },
@@ -53,7 +59,9 @@ export function mountRoute(container, app, arg) {
       h('small', {}, help));
   };
 
+  const guide = guideFor(app);
   container.replaceChildren(h('div', { class: 'stack' },
+    guide.show && guide.now === 'markers' ? h('p', { class: 'eyebrow' }, `Getting started · step ${guide.stepNo} of ${guide.total} · place your two markers`) : null,
     h('div', { class: 'hud-top' },
       h('h1', { class: 'display' }, saved ? 'Edit route' : 'New route'),
       app.routes.length ? h('a', { href: '#route' }, 'All routes') : null),
@@ -66,18 +74,21 @@ export function mountRoute(container, app, arg) {
       h('p', { class: 'muted' }, 'Or reuse a marker from another route, so it is exactly the same spot:'),
       h('div', { class: 'pads' }, known.map((m) => h('button', { class: 'plate dark small', onclick: () => reuse(m) }, m.name)))) : null,
     h('label', { class: 'field' }, h('span', {}, 'Name of marker A'), nameInput('a')),
+    privateBox('a'),
     h('label', { class: 'field' }, h('span', {}, 'Name of marker B'), nameInput('b')),
+    privateBox('b'),
+    h('p', { class: 'muted' }, 'A private place, like home or work, is hidden in Presentation mode and left out of files you send with your start and finish hidden. Untick it for a public landmark.'),
     slider('activationM', 'Start circle', 'The clock starts when you drive out of this circle. Make it big enough to cover where you park.'),
     slider('finalizationM', 'Finish circle', 'The clock stops when you drive into this circle.'),
     saved ? h('p', { class: 'muted' }, 'Moving a marker or resizing a circle starts fresh records; earlier runs stay in History.') : null,
     saveBtn,
     status,
-    h('p', { class: 'muted' }, 'Speed limits come from OpenStreetMap, © OpenStreetMap contributors. Place markers on the street itself, not on a building.'),
+    h('p', { class: 'muted' }, 'Speed limits come from OpenStreetMap, © OpenStreetMap contributors. Saving asks its servers for the roads in the area around your two markers, so they can see that area. Place markers on the street itself, not on a building.'),
   ));
 
   const map = L.map(mapEl, { zoomControl: true });
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
-  if (saved) map.fitBounds(L.latLngBounds([[saved.a.lat, saved.a.lon], [saved.b.lat, saved.b.lon]]).pad(0.25));
+  if (hasPlaces(saved)) map.fitBounds(L.latLngBounds([[saved.a.lat, saved.a.lon], [saved.b.lat, saved.b.lon]]).pad(0.25));
   else if (first) map.setView([first.a.lat, first.a.lon], 13);
   else {
     map.setView(EUROPE.center, EUROPE.zoom);
@@ -99,7 +110,7 @@ export function mountRoute(container, app, arg) {
       status.textContent = 'Both markers are placed. Tap Move A or Move B first, then the marker to reuse.';
       return;
     }
-    draft[key] = { ...draft[key], name: marker.name, lat: marker.lat, lon: marker.lon };
+    draft[key] = { ...draft[key], name: marker.name, lat: marker.lat, lon: marker.lon, private: isPrivate(marker) };
     names[key].value = marker.name;
     placing = key === 'a' && draft.b.lat == null ? 'b' : null;
     map.setView([marker.lat, marker.lon], Math.max(map.getZoom(), 14));
@@ -144,7 +155,7 @@ export function mountRoute(container, app, arg) {
     if (draft.a.lat == null || draft.b.lat == null) return 'Both markers need a place on the map.';
     const d = distanceM(draft.a, draft.b);
     if (d < tun.minMarkerSeparationM) return `The markers are ${Math.round(d)} m apart. They need at least ${tun.minMarkerSeparationM} m between them.`;
-    if (d > tun.maxMarkerSeparationM) return `The markers are ${Math.round(d / 1000)} km apart. Zoom in and place both on your own streets.`;
+    if (d > tun.maxMarkerSeparationM) return `The markers are ${fmtDist(d, app.unit)} apart. Zoom in and place both on your own streets.`;
     return null;
   }
 
@@ -158,7 +169,7 @@ export function mountRoute(container, app, arg) {
     saveBtn.disabled = busy || !!p;
     if (!busy) {
       status.textContent = p && draft.a.lat != null && draft.b.lat != null ? p
-        : !p ? `${fmtKm(distanceM(draft.a, draft.b))} in a straight line.` : '';
+        : !p ? `${fmtDist(distanceM(draft.a, draft.b), app.unit)} in a straight line.` : '';
     }
   }
 
@@ -167,10 +178,12 @@ export function mountRoute(container, app, arg) {
     const marker = (key) => ({
       name: draft[key].name, lat: draft[key].lat, lon: draft[key].lon,
       activationM: draft.activationM, finalizationM: draft.finalizationM,
+      private: draft[key].private !== false,
     });
+    // Markers placed on a route that came with its ends hidden make it a route of this phone.
     const next = { id: saved?.id || app.store.newRouteId(), rev: saved?.rev || 1, playerId: app.player.id, a: marker('a'), b: marker('b') };
-    const moved = saved && ['a', 'b'].some((k) =>
-      distanceM(saved[k], next[k]) > 1 || saved[k].activationM !== next[k].activationM || saved[k].finalizationM !== next[k].finalizationM);
+    const moved = saved && (!hasPlaces(saved) || ['a', 'b'].some((k) =>
+      distanceM(saved[k], next[k]) > 1 || saved[k].activationM !== next[k].activationM || saved[k].finalizationM !== next[k].finalizationM));
     if (moved) next.rev = saved.rev + 1;
 
     busy = true;

@@ -3,11 +3,15 @@
 import { h, fmtDate } from './dom.js';
 import { DEFAULTS, withOverrides } from '../src/tunables.js';
 import { cleanName } from '../src/profile.js';
+import { hasPlaces } from '../src/privacy.js';
+import { fromKmh, toKmh, bandWidth, UNIT_LABEL } from '../src/units.js';
 import { downloadRoads } from './limits.js';
+import { guideFor, setGuideHidden } from './guide.js';
 import { persistent } from './store.js';
 import { BUILD } from '../version.js';
 
-// [key, label, unit, help]
+// [key, label, unit, help]. A 'km/h' field is shown and edited in mph when that is the phone's unit;
+// what is stored is always km/h.
 const GROUPS = [
   ['Speeding', [
     ['overToleranceKmh', 'Yellow band width', 'km/h', 'From the limit up to limit + this is yellow. Above it is red. GPS speed wobbles a little, which is why the band exists. Everything is judged on the whole number the screen shows.'],
@@ -28,12 +32,15 @@ const GROUPS = [
     ['maxAccuracyM', 'Ignore GPS worse than', 'm', ''],
   ]],
   ['Start, finish and pauses', [
-    ['startMinSpeedMs', 'Start needs at least', 'm/s', '2.5 m/s is 9 km/h. Stops GPS wander while parked from starting the clock.'],
+    ['startMinSpeedMs', 'Start needs at least', 'm/s', (unit) => `2.5 m/s is ${unit === 'mph' ? 'about 6 mph' : '9 km/h'}. Stops GPS wander while parked from starting the clock.`],
     ['finishMinElapsedS', 'Shortest possible run', 's', ''],
     ['finishCountdownM', 'Finish countdown from', 'm', 'The arrow and metre countdown take over inside this distance to the finish line.'],
     ['gapFlagS', 'GPS pause that voids a run', 's', 'Happens when the phone locks or another app comes to the front.'],
     ['gapAbortS', 'GPS pause that stops a run', 's', ''],
     ['recordWindowDays', 'Records last', 'days', ''],
+  ]],
+  ['Sending files', [
+    ['shareTrimM', 'Hide this far around a private marker', 'm', 'A file sent with your start and finish hidden leaves out every GPS point this close to a private marker.'],
   ]],
 ];
 
@@ -66,12 +73,17 @@ export function mountTuning(container, app) {
   }
 
   function numberField([key, label, unit, help]) {
+    const inMph = unit === 'km/h' && app.unit === 'mph';
+    // The yellow band is counted in whole mph, rounded up; other speeds show one decimal.
+    const shown = (kmh) => (!inMph ? kmh : key === 'overToleranceKmh' ? bandWidth(kmh, 'mph') : Math.round(fromKmh(kmh, 'mph') * 10) / 10);
+    const stored = (value) => (!inMph ? value : value === shown(DEFAULTS[key]) ? DEFAULTS[key] : Math.round(toKmh(value, 'mph') * 1e4) / 1e4);
     const changed = app.tunables[key] !== DEFAULTS[key];
+    const text = typeof help === 'function' ? help(app.unit) : help;
     return h('label', { class: 'field' },
-      h('span', {}, `${label} (${unit})`, changed ? h('span', { class: 'tag', style: 'margin-left:8px' }, `default ${DEFAULTS[key]}`) : null),
-      h('input', { type: 'number', step: 'any', min: 0, inputmode: 'decimal', value: app.tunables[key],
-        onchange: async (e) => { await setTunable(key, parseFloat(e.target.value)); draw(); } }),
-      help ? h('small', {}, help) : null);
+      h('span', {}, `${label} (${inMph ? 'mph' : unit})`, changed ? h('span', { class: 'tag', style: 'margin-left:8px' }, `default ${shown(DEFAULTS[key])}`) : null),
+      h('input', { type: 'number', step: 'any', min: 0, inputmode: 'decimal', value: shown(app.tunables[key]),
+        onchange: async (e) => { await setTunable(key, stored(parseFloat(e.target.value))); draw(); } }),
+      text || (inMph && key === 'overToleranceKmh') ? h('small', {}, text, inMph && key === 'overToleranceKmh' ? ' In mph the band is whole mph, rounded up.' : '') : null);
   }
 
   async function refreshRoads() {
@@ -98,6 +110,7 @@ export function mountTuning(container, app) {
   }
 
   async function exportData() {
+    if (!confirm('This file shows where you live and work: it holds your markers and every GPS point of every run. Keep it as your own backup. Export it?')) return;
     const data = await app.store.exportPlayer(app.player);
     const file = new File([JSON.stringify(data)], `csr-demo-${app.player.name.replace(/\W+/g, '-')}-${new Date().toISOString().slice(0, 10)}.json`, { type: 'application/json' });
     if (navigator.canShare?.({ files: [file] })) {
@@ -117,9 +130,11 @@ export function mountTuning(container, app) {
       await app.reload();
       draw();
       const n = plan.runs.length;
-      status.textContent = plan.player.id === app.player.id
+      status.textContent = (plan.player.id === app.player.id
         ? `Imported ${n} ${n === 1 ? 'run' : 'runs'} into ${plan.player.name}.`
-        : `Imported ${n} ${n === 1 ? 'run' : 'runs'} from ${plan.player.name}. Switch player at the top of this page to look through them.`;
+        : `Imported ${n} ${n === 1 ? 'run' : 'runs'} from ${plan.player.name}. Switch player at the top of this page to look through them.`)
+        + (plan.trimmed ? ' The file was sent with start and finish hidden: its runs can be looked through but not replayed.' : '')
+        + (plan.skipped ? ` ${plan.skipped} already here in full were left alone.` : '');
     } catch (err) {
       status.textContent = `Import failed: ${err.message}`;
     }
@@ -143,6 +158,18 @@ export function mountTuning(container, app) {
         h('a', { class: 'plate dark small', href: '#player/new' }, 'Add a player'),
         h('a', { class: 'plate small', href: '#feedback' }, 'Send feedback')),
       h('p', { class: 'muted' }, 'A player is just a name. Each one keeps their own routes, runs and bests on this phone. The rules below are shared.'),
+      s.guideHidden?.[app.player.id] && !guideFor(app).steps.every((x) => x.state === 'done')
+        ? h('button', { class: 'plate dark small', onclick: async () => { await setGuideHidden(app, false); location.hash = '#drive'; } }, 'Show the getting-started steps again')
+        : null,
+
+      h('h2', { class: 'display' }, 'Screen'),
+      h('label', { class: 'field wide' }, h('span', {}, 'Speed unit'),
+        h('select', { onchange: async (e) => { await saveSettings({ speedUnit: e.target.value }); draw(); } },
+          ['kmh', 'mph'].map((u) => h('option', { value: u, selected: app.unit === u }, UNIT_LABEL[u]))),
+        h('small', {}, 'Speeds, limits and long distances. Distances to the start and finish, and the marker circles, stay in metres. You are judged on the whole number you see, against the whole number on the limit sign.')),
+      h('label', { class: 'field' }, h('span', {}, 'Presentation mode'),
+        h('input', { type: 'checkbox', checked: app.presenting, onchange: async (e) => { await saveSettings({ presentation: e.target.checked }); app.refreshFlags(); } }),
+        h('small', {}, 'For screenshots and screen recordings. Hides the names of private places, their pins and circles, street names, and the map under your drives, so nothing on screen says where you live or work. It changes only what is drawn. The route editor keeps its map.')),
 
 
       h('h2', { class: 'display' }, 'Sound'),
@@ -170,8 +197,9 @@ export function mountTuning(container, app) {
         h('button', { class: 'plate dark small', onclick: exportData }, 'Export data'),
         h('button', { class: 'plate dark small', onclick: () => picker.click() }, 'Import data')),
       picker,
+      h('p', { class: 'notice' }, 'The export file is a full backup. It shows where you live and work: your markers and every GPS point of every run. To send runs to someone else, use Send feedback, which can hide your start and finish.'),
       h('div', { class: 'row' },
-        h('button', { class: 'plate dark small', disabled: !app.route, onclick: refreshRoads }, 'Update speed limits'),
+        h('button', { class: 'plate dark small', disabled: !hasPlaces(app.route), onclick: refreshRoads }, 'Update speed limits'),
         h('button', { class: 'plate dark small', onclick: async () => {
           const n = await app.store.deleteDemoRuns(app.player.id);
           await app.reload();

@@ -1,7 +1,7 @@
 // History tab: current bests per time-of-day bucket, then every run.
 
 import { h, fmtDate, fmtClock } from './dom.js';
-import { routeLabel } from './routes.js';
+import { placeName, routeName } from '../src/privacy.js';
 import { BUCKETS, BUCKET_LABELS } from '../src/buckets.js';
 import { bestsByBucket, isClean } from '../src/records.js';
 import { formatDuration } from '../src/phrases.js';
@@ -27,7 +27,8 @@ export function mountHistory(container, app) {
         h('p', {}, 'Runs show up here after you place your markers and drive between them.'),
         h('a', { class: 'plate', href: '#route/new' }, 'Place markers')));
     }
-    const names = direction === 'ab' ? [route.a.name, route.b.name] : [route.b.name, route.a.name];
+    const place = (key) => placeName(route, key, app.presenting);
+    const names = direction === 'ab' ? [place('a'), place('b')] : [place('b'), place('a')];
     const mine = runs.filter((r) => r.routeId === route.id && r.direction === direction);
     const current = mine.filter((r) => r.routeRev === route.rev);
     const bests = bestsByBucket(runs, { routeId: route.id, routeRev: route.rev, direction }, { windowDays: tunables.recordWindowDays });
@@ -36,12 +37,12 @@ export function mountHistory(container, app) {
     container.replaceChildren(h('div', { class: 'stack' },
       h('h1', { class: 'display' }, 'History'),
       app.routes.length > 1 ? h('select', { 'aria-label': 'Route', onchange: (e) => { routeId = e.target.value; draw(); } },
-        app.routes.map((r) => h('option', { value: r.id, selected: r.id === route.id }, routeLabel(r)))) : null,
+        app.routes.map((r) => h('option', { value: r.id, selected: r.id === route.id }, routeName(r, app.presenting)))) : null,
       h('div', { class: 'seg', role: 'group', 'aria-label': 'Direction' },
         ['ab', 'ba'].map((d) => h('button', {
           'aria-pressed': String(direction === d),
           onclick: () => { direction = d; draw(); },
-        }, d === 'ab' ? `${route.a.name} → ${route.b.name}` : `${route.b.name} → ${route.a.name}`))),
+        }, d === 'ab' ? `${place('a')} → ${place('b')}` : `${place('b')} → ${place('a')}`))),
 
       h('h2', { class: 'display' }, 'Bests by time of day'),
       h('table', {},
@@ -55,6 +56,7 @@ export function mountHistory(container, app) {
       mine.length ? h('div', {}, mine.map((run) => h('a', { class: 'run-row', href: `#run/${run.id}` },
         h('span', {}, `${fmtDate(run.startT)} · ${fmtClock(run.startT)} `, tagFor(run, bests),
           run.demo ? h('span', { class: 'tag', style: 'margin-left:6px' }, 'Demo') : null,
+          run.trimmed ? h('span', { class: 'tag', style: 'margin-left:6px' }, 'Ends hidden') : null,
           run.routeRev !== route.rev ? h('span', { class: 'tag', style: 'margin-left:6px' }, 'Old markers') : null),
         h('span', { class: 'time' }, formatDuration(run.durationS)),
         h('span', { class: 'muted' }, BUCKET_LABELS[run.bucket] || ''))))

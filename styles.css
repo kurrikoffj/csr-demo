@@ -18,6 +18,7 @@
 
   --gutter: 16px;
   --tabs-h: 58px;
+  --flags-h: 0px;
 }
 
 * { box-sizing: border-box; }
@@ -47,6 +48,24 @@ a { color: inherit; }
 button, input, select { font: inherit; color: inherit; }
 
 :focus-visible { outline: 3px solid var(--sign-yellow); outline-offset: 3px; }
+
+/* Mode strip: Presentation mode says so on every screen, in every state colour. */
+body.flagged { --flags-h: 27px; }
+#flags {
+  height: calc(var(--flags-h) + env(safe-area-inset-top));
+  padding: calc(env(safe-area-inset-top) + 3px) 12px 0;
+  background: #111;
+  color: var(--sign-yellow);
+  border-bottom: 2px solid var(--sign-yellow);
+  font: 700 14px/22px var(--display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.flagged #view { padding-top: var(--gutter); }
 
 #view {
   padding: calc(env(safe-area-inset-top) + var(--gutter)) var(--gutter)
@@ -129,6 +148,25 @@ button.plate:disabled { opacity: 0.45; cursor: default; }
 .pads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 2px; }
 .pads > button.plate { width: auto; }
 .gap-top { margin-top: 18px; }
+
+/* ---------- Getting started: numbered steps ---------- */
+
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.steps > li { display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: start; }
+/* A round blue mandatory sign: do this. */
+.step-no {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center;
+  font: 700 22px/1 var(--display); padding-top: 3px;
+  background: var(--sign-blue); color: var(--sign-white); border: 3px solid var(--sign-white);
+}
+.steps > li[data-state="done"] .step-no { background: var(--sign-green); border-color: var(--sign-green); font-size: 20px; padding-top: 0; }
+.steps > li[data-state="later"] .step-no { background: var(--asphalt-3); border-color: var(--asphalt-3); color: var(--marking); }
+.steps > li[data-state="later"] .step-title { color: var(--marking); }
+.step-title { font: 700 22px/1.05 var(--display); text-transform: uppercase; letter-spacing: 0.02em; padding-top: 10px; }
+.step-body { display: grid; gap: 10px; margin-top: 6px; }
+.guide-card { border: 2px solid var(--asphalt-3); border-radius: 12px; background: var(--asphalt-2); padding: 14px; display: grid; gap: 14px; }
+.guide-card .hud-top { align-items: center; }
 
 /* The route as a direction sign. */
 .route-sign { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
@@ -213,7 +251,7 @@ button.plate.route-pick .data { font-family: var(--data); font-size: 15px; }
 /* ---------- Drive HUD ---------- */
 
 .hud {
-  min-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2 * var(--gutter));
+  min-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2 * var(--gutter) - var(--flags-h));
   display: grid;
   grid-template-rows: auto 1fr auto auto;
   gap: 14px;
@@ -273,7 +311,7 @@ body[data-state="over"] .hud-main .roundel { animation: pulse 0.6s ease-in-out i
 @media (orientation: landscape) and (max-height: 520px) {
   /* Phone sideways on the mount: speed and limit on the left, clock on the right, one slim row below. */
   .hud {
-    height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2 * var(--gutter));
+    height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2 * var(--gutter) - var(--flags-h));
     min-height: 0;
     grid-template-rows: auto minmax(0, 1fr) auto;
     grid-template-columns: 1.25fr 1fr;
@@ -360,6 +398,8 @@ input[type="checkbox"] { width: 24px; height: 24px; accent-color: var(--sign-blu
 .map { height: 46vh; min-height: 280px; border-radius: 12px; overflow: hidden; border: 3px solid var(--asphalt-3); background: var(--asphalt-2); }
 .map.short { height: 34vh; min-height: 220px; }
 .leaflet-container { font-family: var(--body); background: #dfe3e6; }
+/* A map without map tiles: Presentation mode. */
+.map.plain .leaflet-container, .map.plain.leaflet-container { background: #e6e9ec; }
 .pin { width: 30px; height: 30px; border-radius: 50%; border: 3px solid var(--sign-white); display: grid; place-items: center; font: 700 17px/1 var(--display); padding-top: 3px; color: var(--sign-white); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); }
 .pin.a { background: var(--sign-blue); }
 .pin.b { background: #111; }

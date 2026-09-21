@@ -2,6 +2,8 @@
 notes/
 traces/
 marketing/
+# Export files from the game hold markers and GPS traces
+csr-demo-*.json
 
 # Local tooling
 .claude/

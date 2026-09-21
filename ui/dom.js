@@ -1,3 +1,5 @@
+import { shownLimit, isConverted, formatDistance, UNIT_LABEL } from '../src/units.js';
+
 // Tiny DOM helpers. h('div', { class: 'x', onclick: fn }, child, 'text', [more])
 export function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
@@ -16,24 +18,27 @@ export function h(tag, attrs = {}, ...children) {
 
 // The speed limit as the road sign it came from.
 // Solid ring: read from the map. Dashed ring: assumed default. Grey: unknown, not enforced.
-export function roundel(limit) {
+// The number is the one the driver is judged against, in the unit on their screen. A sign in the
+// other unit is converted and rounded up (see src/units.js) and gets a ~, like any approximate limit.
+export function roundel(limit, unit = 'kmh') {
   const el = h('div', { class: 'roundel', role: 'img' });
-  setRoundel(el, limit);
+  setRoundel(el, limit, unit);
   return el;
 }
 
-export function setRoundel(el, limit) {
+export function setRoundel(el, limit, unit = 'kmh') {
   const tier = limit ? limit.tier : 'unknown';
+  const n = limit ? shownLimit(limit, unit) : null;
   el.dataset.tier = tier;
-  el.textContent = limit ? `${limit.approx ? '~' : ''}${Math.round(limit.kmh)}` : '–';
+  el.textContent = limit ? `${limit.approx || isConverted(limit, unit) ? '~' : ''}${n}` : '–';
   el.setAttribute(
     'aria-label',
-    limit ? `Speed limit ${Math.round(limit.kmh)}${tier === 'assumed' ? ', assumed' : ''}` : 'Speed limit unknown',
+    limit ? `Speed limit ${n} ${UNIT_LABEL[unit]}${tier === 'assumed' ? ', assumed' : ''}` : 'Speed limit unknown',
   );
 }
 
-export const fmtKm = (m) => (m == null ? '–' : `${(m / 1000).toFixed(1)} km`);
-export const fmtM = (m) => (m == null ? '–' : m < 1000 ? `${Math.round(m)} m` : fmtKm(m));
+// Long distances follow the speed unit: km or miles. Short ones stay in metres everywhere.
+export const fmtDist = (m, unit = 'kmh') => (Number.isFinite(m) ? formatDistance(m, unit) : '–');
 
 export function fmtDate(t) {
   return new Date(t).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });

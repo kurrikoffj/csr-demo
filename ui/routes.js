@@ -1,16 +1,15 @@
 // Routes tab: every route as a direction sign. Tap one to select it for Drive.
 
-import { h, fmtKm } from './dom.js';
+import { h, fmtDist } from './dom.js';
 import { distanceM } from '../src/geo.js';
 import { isClean } from '../src/records.js';
-
-export const routeLabel = (route) => `${route.a.name} ⇄ ${route.b.name}`;
+import { placeName, routeName, hasPlaces } from '../src/privacy.js';
 
 export function mountRoutes(container, app) {
   const status = h('p', { class: 'muted', role: 'status' });
 
   async function select(route) {
-    status.textContent = `Loading the roads for ${routeLabel(route)}…`;
+    status.textContent = `Loading the roads for ${routeName(route, app.presenting)}…`;
     await app.useRoute(route.id);
     draw();
   }
@@ -18,7 +17,7 @@ export function mountRoutes(container, app) {
   async function remove(route) {
     const runs = app.runs.filter((r) => r.routeId === route.id).length;
     const what = runs ? ` and its ${runs} ${runs === 1 ? 'run' : 'runs'}` : '';
-    if (!confirm(`Delete ${routeLabel(route)}${what}? This cannot be undone. Export first if you want a backup.`)) return;
+    if (!confirm(`Delete ${routeName(route, app.presenting)}${what}? This cannot be undone. Export first if you want a backup.`)) return;
     await app.store.deleteRoute(route.id);
     await app.reload();
     draw();
@@ -34,12 +33,12 @@ export function mountRoutes(container, app) {
         'aria-pressed': String(selected),
         onclick: () => select(route),
       },
-      h('span', { class: 'display' }, route.a.name, h('span', { class: 'arrow' }, '⇄'), route.b.name),
-      h('span', { class: 'data' }, fmtKm(distanceM(route.a, route.b)))),
+      h('span', { class: 'display' }, placeName(route, 'a', app.presenting), h('span', { class: 'arrow' }, '⇄'), placeName(route, 'b', app.presenting)),
+      h('span', { class: 'data' }, hasPlaces(route) ? fmtDist(distanceM(route.a, route.b), app.unit) : 'ends hidden')),
       h('p', { class: 'muted' },
         `${selected ? 'Selected for Drive · ' : ''}${runs.length} ${runs.length === 1 ? 'run' : 'runs'}, ${clean} clean`),
       h('div', { class: 'row' },
-        h('a', { class: 'plate dark small', href: `#route/${route.id}` }, 'Edit'),
+        h('a', { class: 'plate dark small', href: `#route/${route.id}` }, hasPlaces(route) ? 'Edit' : 'Place markers'),
         h('button', { class: 'plate dark small', onclick: () => remove(route) }, 'Delete')));
   }
 

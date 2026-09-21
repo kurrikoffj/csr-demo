@@ -67,6 +67,9 @@ export const DEFAULTS = Object.freeze({
   // Records
   recordWindowDays: 730,
 
+  // Sharing: a file sent with "hide where I start and finish" loses every GPS point this close to a private marker
+  shareTrimM: 500,
+
   // Buckets, by local start time
   buckets: Object.freeze({
     amStart: 6 * 60 + 30,

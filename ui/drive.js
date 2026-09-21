@@ -1,8 +1,10 @@
 // Drive tab: ready screen (pick route and direction), armed screen, and the HUD while a run is on.
 
-import { h, roundel, setRoundel, guideArrow, setGuideArrow, fmtKm } from './dom.js';
+import { h, roundel, setRoundel, guideArrow, setGuideArrow, fmtDist } from './dom.js';
 import { Session } from './session.js';
-import { routeLabel } from './routes.js';
+import { guideFor, guideCard } from './guide.js';
+import { placeName, routeName, hasPlaces } from '../src/privacy.js';
+import { UNIT_LABEL } from '../src/units.js';
 import { bucketFor, BUCKET_LABELS } from '../src/buckets.js';
 import { bestsByBucket } from '../src/records.js';
 import { formatDuration } from '../src/phrases.js';
@@ -27,9 +29,9 @@ function setDigits(el, text) {
 // What the guidance arrow is steering by, said plainly under the distance.
 const MODE_TEXT = { course: 'by direction of travel', compass: 'by compass', north: 'north up' };
 
-// Whole metres close in, so the last stretch reads as a countdown.
-function guideDistance(m) {
-  if (m >= 1000) return fmtKm(m);
+// Whole metres close in, so the last stretch reads as a countdown. Metres in either unit: only long distances follow it.
+function guideDistance(m, unit) {
+  if (m >= 1000) return fmtDist(m, unit);
   return `${m < 300 ? Math.round(m) : Math.round(m / 10) * 10} m`;
 }
 
@@ -66,18 +68,42 @@ export function mountDrive(container, app) {
     return last?.direction === 'ab' ? 'ba' : 'ab';
   }
 
-  const names = (dir) => (dir === 'ba' ? [app.route.b.name, app.route.a.name] : [app.route.a.name, app.route.b.name]);
+  // Presentation mode shows a private place as its letter. What the engine knows is untouched.
+  const place = (key) => placeName(app.route, key, app.presenting);
+  const names = (dir) => (dir === 'ba' ? [place('b'), place('a')] : [place('a'), place('b')]);
+  const unitLabel = () => UNIT_LABEL[app.unit];
 
   // ----- Ready -----
 
   function ready() {
     const { route, roads, runs, tunables } = app;
-    if (!route) {
-      return h('div', { class: 'stack' },
-        h('h1', { class: 'display' }, 'Set your start and finish'),
-        h('p', {}, 'Place two markers on the map, for example home and work. The clock runs between them, in either direction, on any roads you choose.'),
+    // A new player gets their next step spelled out, until the first finished drive.
+    const guide = guideFor(app);
+    const card = guide.show ? guideCard(app, guide, {
+      markers: [
+        h('p', {}, 'Put marker A where you set off from and marker B where you are going, for example home and work. The clock runs between them, in either direction, on any roads you choose. Speed limits for the area download when you save.'),
         h('a', { class: 'plate', href: '#route/new' }, 'Place markers'),
-      );
+      ],
+      drive: [
+        h('p', {}, 'Before you set off: phone on its mount, this page open, then tap the big Arm button below. After that it needs no touching. An arrow leads you to the start circle, the clock starts as you drive out of it, and it stops by itself at the other marker.'),
+        h('p', { class: 'muted' }, 'Not in the car? “Replay a clean drive” at the bottom of this page shows and sounds like a real run, along your own roads.'),
+      ],
+    }, () => refresh(true)) : null;
+    if (!route) {
+      return card ? h('div', { class: 'stack' }, h('h1', { class: 'display' }, `Welcome, ${app.player.name}`), card)
+        : h('div', { class: 'stack' },
+          h('h1', { class: 'display' }, 'Set your start and finish'),
+          h('p', {}, 'Place two markers on the map, for example home and work. The clock runs between them, in either direction, on any roads you choose.'),
+          h('a', { class: 'plate', href: '#route/new' }, 'Place markers'),
+        );
+    }
+    if (!hasPlaces(route)) {
+      // Came in a file that was sent with its start and finish hidden.
+      return h('div', { class: 'stack' },
+        h('h1', { class: 'display' }, routeName(route, app.presenting)),
+        h('p', { class: 'notice' }, 'This route came from a file sent with its start and finish hidden, so it has no markers to drive between. Its runs can be looked through in History.'),
+        h('a', { class: 'plate', href: '#history' }, 'Open History'),
+        app.routes.length > 1 ? h('a', { class: 'plate dark', href: '#route' }, 'Pick another route') : null);
     }
     const dir = direction();
     const [from, to] = names(dir);
@@ -95,13 +121,14 @@ export function mountDrive(container, app) {
           await app.useRoute(e.target.value);
           refresh(true);
         },
-      }, app.routes.map((r) => h('option', { value: r.id, selected: r.id === route.id }, routeLabel(r))))
+      }, app.routes.map((r) => h('option', { value: r.id, selected: r.id === route.id }, routeName(r, app.presenting))))
       : null;
 
     return h('div', { class: 'stack' },
+      card,
       h('div', { class: 'plate route-sign', style: 'position:relative' },
-        h('span', { class: 'display' }, route.a.name, h('span', { class: 'arrow' }, '⇄'), route.b.name),
-        h('span', { class: 'data', style: picker ? 'font-size:24px' : '' }, picker ? '▾' : fmtKm(distanceM(route.a, route.b))),
+        h('span', { class: 'display' }, place('a'), h('span', { class: 'arrow' }, '⇄'), place('b')),
+        h('span', { class: 'data', style: picker ? 'font-size:24px' : '' }, picker ? '▾' : fmtDist(distanceM(route.a, route.b), app.unit)),
         picker),
       h('div', { class: 'seg', role: 'group', 'aria-label': 'Direction' },
         ['ab', 'ba'].map((d) => h('button', {
@@ -161,7 +188,7 @@ export function mountDrive(container, app) {
       gps: h('p', { class: 'armed-note data', style: 'font-size:14px;opacity:.85' }),
       note: h('p', { class: 'armed-note' }),
       sub: h('p', { class: 'armed-note', style: 'opacity:.8' }),
-      roundel: roundel(null),
+      roundel: roundel(null, app.unit),
       speed: h('span', { class: 'display', style: 'font-size:56px' }, '–'),
     };
     els.roundel.style.setProperty('--d', '76px');
@@ -178,7 +205,7 @@ export function mountDrive(container, app) {
         els.sub,
         els.gps,
         h('div', { class: 'row', style: 'justify-content:center;align-items:center;gap:18px;margin-top:6px' },
-          els.roundel, h('div', { style: 'flex:none' }, els.speed, h('span', { class: 'unit' }, ' km/h')))),
+          els.roundel, h('div', { style: 'flex:none' }, els.speed, h('span', { class: 'unit' }, ` ${unitLabel()}`)))),
       h('div', { class: 'row' },
         h('button', { class: 'plate white small', onclick: () => app.cues.play('warning') }, 'Test warning sound'),
         h('button', { class: 'plate white small', onclick: () => session().stop() }, 'Disarm')),
@@ -188,14 +215,14 @@ export function mountDrive(container, app) {
   function updateArmed(hud) {
     const els = hudEls;
     const s = session();
-    const [from, to] = hud.direction ? [hud.startName, hud.finishName] : names(s.engine.preferred);
+    const [from, to] = names(hud.direction || s.engine.preferred);
     els.title.textContent = `Armed · ${from} → ${to}`;
     els.guide.hidden = !hud.target;
     els.big.hidden = !!hud.target; // the arrow replaces the big word while there is somewhere to drive to
     if (hud.target) {
       const up = s.guideHeading(hud);
       setGuideArrow(els.arrow, hud.target.bearingDeg, up.deg);
-      els.dist.textContent = guideDistance(hud.target.distM);
+      els.dist.textContent = guideDistance(hud.target.distM, app.unit);
       els.mode.textContent = MODE_TEXT[up.source] + (up.source === 'north' && s.compass.status === 'denied' ? ' · compass refused' : '');
     }
     const weak = hud.waitingFor === 'gps';
@@ -207,8 +234,8 @@ export function mountDrive(container, app) {
     els.sub.textContent = s.screenAwake === false ? `${advice} Screen lock is not held: keep the screen on yourself.` : advice;
     els.gps.textContent = hud.accuracyM == null ? ''
       : `GPS ±${Math.round(hud.accuracyM)} m${weak ? ` · too rough to start the clock, needs ±${app.tunables.maxAccuracyM} m. Usually better outdoors.` : ''}`;
-    setRoundel(els.roundel, hud.limit);
-    els.speed.textContent = hud.shownKmh == null ? '–' : String(hud.shownKmh);
+    setRoundel(els.roundel, hud.limit, app.unit);
+    els.speed.textContent = hud.shownSpeed == null ? '–' : String(hud.shownSpeed);
   }
 
   // ----- Running -----
@@ -218,7 +245,7 @@ export function mountDrive(container, app) {
     const els = {
       dir: h('span', { class: 'display' }),
       bucket: h('span', { class: 'data' }),
-      roundel: roundel(null),
+      roundel: roundel(null, app.unit),
       speed: digits('0'),
       road: h('p', { class: 'hud-road' }),
       clock: digits('0:00'),
@@ -246,7 +273,7 @@ export function mountDrive(container, app) {
       h('div', { class: 'hud-body' },
         h('div', { class: 'hud-main' },
           els.roundel,
-          h('div', { class: 'speed' }, h('div', { class: 'display' }, els.speed), h('div', { class: 'unit' }, 'km/h'))),
+          h('div', { class: 'speed' }, h('div', { class: 'display' }, els.speed), h('div', { class: 'unit' }, unitLabel()))),
         els.road),
       h('div', { class: 'hud-clock' }, h('div', { class: 'display' }, els.clock)),
       h('div', { class: 'stack hud-bottom' },
@@ -258,17 +285,19 @@ export function mountDrive(container, app) {
   function updateRunning(hud) {
     const els = hudEls;
     const s = session();
-    els.dir.textContent = `${hud.startName} → ${hud.finishName}`;
+    const [from, to] = names(hud.direction);
+    els.dir.textContent = `${from} → ${to}`;
     els.bucket.textContent = s.screenAwake === false
       ? 'Screen may sleep · keep it on'
       : `${s.demo ? 'DEMO 8× · ' : ''}${BUCKET_LABELS[s.engine.bucket] || ''}`;
-    setRoundel(els.roundel, hud.limit);
-    setDigits(els.speed, hud.shownKmh == null ? '–' : String(hud.shownKmh));
+    setRoundel(els.roundel, hud.limit, app.unit);
+    setDigits(els.speed, hud.shownSpeed == null ? '–' : String(hud.shownSpeed));
     // Over the limit shows at once on the digits; the yellow screen and tone wait for it to last.
     els.speed.classList.toggle('above', hud.aboveLimit && hud.zone === 'ok');
     els.road.textContent = hud.gps === 'weak' ? `Weak GPS (${Math.round(hud.accuracyM)} m)`
       : hud.zone === 'yellow' ? 'Over the limit too long'
-        : hud.aboveLimit && hud.zone === 'ok' ? 'A little over the limit' : hud.wayName || ' ';
+        : hud.aboveLimit && hud.zone === 'ok' ? 'A little over the limit'
+          : app.presenting ? ' ' : hud.wayName || ' '; // a street name says where you are
     setDigits(els.clock, formatDuration(hud.elapsedS));
     els.banner.hidden = !hud.disqualified;
     els.bar.classList.toggle('on', !hud.disqualified && hud.dqProgress > 0);
@@ -276,8 +305,8 @@ export function mountDrive(container, app) {
     els.guide.hidden = !hud.target;
     if (hud.target) {
       setGuideArrow(els.arrow, hud.target.bearingDeg, s.guideHeading(hud).deg);
-      els.dist.textContent = guideDistance(hud.target.distM);
-      els.to.textContent = hud.finishClose ? 'to finish' : `to ${hud.finishName}`;
+      els.dist.textContent = guideDistance(hud.target.distM, app.unit);
+      els.to.textContent = hud.finishClose ? 'to finish' : `to ${to}`;
       els.guide.classList.toggle('close', hud.finishClose);
     }
   }

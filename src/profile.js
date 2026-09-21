@@ -37,20 +37,35 @@ export function planImport(data, local) {
 
   // An id already used by a different player here gets a new one, so nobody's data is overwritten.
   const clashes = (list, id) => list.some((x) => x.id === id && x.playerId && x.playerId !== player.id);
+  // A file sent with its start and finish hidden never replaces the full copy of the same thing.
+  const trimmed = !!data.trimmed;
+  const kept = (list, id) => trimmed && list.some((x) => x.id === id && x.playerId === player.id && !x.trimmed);
+  let skipped = 0;
   const routeIds = {};
-  const routes = (data.routes || (data.route ? [data.route] : [])).map((route) => {
+  const routes = [];
+  for (const route of data.routes || (data.route ? [data.route] : [])) {
     const id = clashes(local.routes, route.id) ? `${route.id}-${player.id}` : route.id;
     routeIds[route.id] = id;
-    return { ...route, id, playerId: player.id };
-  });
+    if (!kept(local.routes, id)) routes.push({ ...route, id, playerId: player.id });
+  }
   const traces = {};
-  const runs = data.runs.map((run) => {
+  const runs = [];
+  for (const run of data.runs) {
     const id = clashes(local.runs, run.id) ? `${run.id}-${player.id}` : run.id;
+    if (kept(local.runs, id)) {
+      skipped++;
+      continue;
+    }
     if (data.traces?.[run.id]) traces[id] = data.traces[run.id];
-    return { ...run, id, routeId: routeIds[run.routeId] ?? run.routeId, playerId: player.id };
-  });
+    runs.push({ ...run, ...(trimmed ? { trimmed: true } : {}), id, routeId: routeIds[run.routeId] ?? run.routeId, playerId: player.id });
+  }
 
-  return { player, created, applySettings: !!data.settings && !created && player.id === activeId, settings: data.settings || null, routes, runs, traces };
+  return {
+    player, created, trimmed, skipped,
+    // Settings come back only with your own full backup.
+    applySettings: !!data.settings && !created && !trimmed && player.id === activeId,
+    settings: data.settings || null, routes, runs, traces,
+  };
 }
 
 export function runTally(runs) {

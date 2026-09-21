@@ -1,7 +1,9 @@
 // OpenStreetMap roads and speed limits: Overpass query, maxspeed parsing, spatial index.
-// A way is { id, name, highway, oneway: 1|-1|0, limit: {kmh,tier,approx}|null, coords: [[lat,lon],...] }.
+// A way is { id, name, highway, oneway: 1|-1|0, limit: {kmh,tier,approx,mph?}|null, coords: [[lat,lon],...] }.
+// kmh is exact. mph is the sign's own number, present only when the map gave the limit in mph.
 
 import { DEFAULTS } from './tunables.js';
+import { KMH_PER_MPH } from './units.js';
 
 const RAD = Math.PI / 180;
 const M_PER_DEG_LAT = 111320;
@@ -25,21 +27,32 @@ const SPEED_KEYS = [
 // Used only when none of the above gave a number, e.g. source:maxspeed=EE:urban.
 const IMPLICIT_KEYS = ['zone:maxspeed', 'maxspeed:type', 'source:maxspeed'];
 
+const mph = (v) => ({ kmh: v * KMH_PER_MPH, mph: v });
+
+// Countries that sign in mph: a bare zone number there is mph, and the metric defaults do not apply.
+const MPH_COUNTRY = /^(GB|UK|US)$/i;
+const GB_NATIONAL = { nsl_restricted: 30, nsl_single: 60, nsl_dual: 70, motorway: 70 };
+
+// One value of a speed tag → { kmh, mph? }, or null.
 function parseSpeedToken(token, tun) {
   const tok = token.trim();
   let m = /^(\d+(?:\.\d+)?)\s*(mph|km\/h|kmh|kph)?$/i.exec(tok);
   if (m) {
     const v = parseFloat(m[1]);
-    return /mph/i.test(m[2] || '') ? Math.round(v * 1.609344) : v;
+    // 30 mph is 48.28 km/h. Rounding it to 48 would put the limit below the sign.
+    return /mph/i.test(m[2] || '') ? mph(v) : { kmh: v };
   }
-  m = /^[A-Za-z]{2}:(.+)$/.exec(tok);
+  m = /^([A-Za-z]{2}):(.+)$/.exec(tok);
   if (!m) return null;
-  const kind = m[1].toLowerCase();
-  if (kind === 'urban') return tun.implicitUrbanKmh;
-  if (kind === 'rural') return tun.implicitRuralKmh;
-  if (kind === 'living_street') return tun.assumedLivingStreetKmh;
+  const inMph = MPH_COUNTRY.test(m[1]);
+  const kind = m[2].toLowerCase();
   const zone = /^(?:zone:?)?(\d+)$/.exec(kind);
-  return zone ? parseFloat(zone[1]) : null;
+  if (zone) return inMph ? mph(parseFloat(zone[1])) : { kmh: parseFloat(zone[1]) };
+  if (inMph) return /^(GB|UK)$/i.test(m[1]) && GB_NATIONAL[kind] ? mph(GB_NATIONAL[kind]) : null;
+  if (kind === 'urban') return { kmh: tun.implicitUrbanKmh };
+  if (kind === 'rural') return { kmh: tun.implicitRuralKmh };
+  if (kind === 'living_street') return { kmh: tun.assumedLivingStreetKmh };
+  return null;
 }
 
 function speedsIn(value, tun) {
@@ -47,7 +60,7 @@ function speedsIn(value, tun) {
   // "30 @ (Mo-Fr 07:00-17:00); 50 @ wet" and "100|100|80"
   for (const part of String(value).split(/[;|]/)) {
     const v = parseSpeedToken(part.split('@')[0], tun);
-    if (v != null && v > 0) out.push(v);
+    if (v && v.kmh > 0) out.push(v);
   }
   return out;
 }
@@ -61,11 +74,14 @@ export function limitFromTags(tags, tun = DEFAULTS) {
     for (const key of IMPLICIT_KEYS) if (tags[key]) values.push(...speedsIn(tags[key], tun));
   }
   if (!values.length) return null;
-  return {
-    kmh: Math.max(...values),
+  const top = values.reduce((a, b) => (b.kmh > a.kmh ? b : a));
+  const limit = {
+    kmh: top.kmh,
     tier: 'tagged',
-    approx: new Set(values).size > 1 || 'maxspeed:variable' in tags,
+    approx: new Set(values.map((v) => v.kmh)).size > 1 || 'maxspeed:variable' in tags,
   };
+  if (top.mph != null) limit.mph = top.mph;
+  return limit;
 }
 
 // Limit to apply on a way: its tag, else an assumed default for the road class, else null (unknown).

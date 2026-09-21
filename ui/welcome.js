@@ -1,8 +1,18 @@
-// Who is driving? A name is the whole account: no password, no sign-up, nothing sent anywhere.
-// Shown on first open, and again from Tuning to add another player on the same phone.
+// The front door: how the game works in three steps, then "who is driving?". A name is the whole
+// account: no password, no sign-up. Shown again from Tuning to add another player on the same phone.
 
 import { h } from './dom.js';
+import { stepList } from './guide.js';
 import { newPlayer, cleanName } from '../src/profile.js';
+
+// What leaves the phone, said exactly. Keep it true.
+export const PRIVACY_TEXT = 'Your name, routes and runs stay on this phone. To load speed limits and map tiles, your phone asks OpenStreetMap servers about the area of your route, and they can see that area. If you send feedback, you choose who gets it and what goes with it.';
+
+const HOW_IT_WORKS = [
+  { title: 'Place two markers', body: 'On a map, for example home and work. That is your route, in both directions.' },
+  { title: 'Arm and drive', body: 'Tap Arm before you set off, phone on its mount. The clock starts by itself as you leave the first marker and stops at the other. Take any roads you like.' },
+  { title: 'Beat your best', body: 'Your best time for that time of day is the one to beat. A little over the speed limit is a yellow caution. Clearly over it for about five seconds voids the run.' },
+];
 
 export function mountWelcome(container, app) {
   const first = app.players.length === 0;
@@ -33,7 +43,13 @@ export function mountWelcome(container, app) {
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
 
   container.replaceChildren(h('div', { class: 'stack' },
-    h('h1', { class: 'display' }, first ? 'Who is driving?' : 'Add a player'),
+    first ? [
+      h('p', { class: 'eyebrow' }, 'A time trial on your own commute'),
+      h('h1', { class: 'display' }, 'Beat your best. Keep to the limit.'),
+      h('h2', { class: 'display' }, 'How it works'),
+      stepList(HOW_IT_WORKS.map((s) => ({ ...s, body: h('p', {}, s.body) }))),
+      h('h2', { class: 'display' }, 'Who is driving?'),
+    ] : h('h1', { class: 'display' }, 'Add a player'),
     h('p', {}, first
       ? 'Your name goes on your routes, runs and any feedback you send. That is the whole account: no password, no sign-up.'
       : 'Each player keeps their own routes, runs and bests on this phone.'),
@@ -43,8 +59,9 @@ export function mountWelcome(container, app) {
     first ? null : h('a', { href: '#tuning' }, 'Cancel'),
     h('h2', { class: 'display' }, 'Before you drive'),
     h('p', { class: 'muted' }, 'Set everything up while parked. Once armed, the game needs no touching: it starts, warns and finishes by itself with tones. The road rules come first; the game disqualifies speeding.'),
-    h('p', { class: 'muted' }, 'Everything stays on this phone. Nothing is uploaded. If you send feedback, you choose who gets it and what goes with it.'),
+    h('p', { class: 'muted' }, PRIVACY_TEXT),
   ));
-  setTimeout(() => input.focus(), 100);
+  // A new visitor reads first; the keyboard would cover the steps on a phone.
+  if (!first) setTimeout(() => input.focus(), 100);
   return { unmount() {} };
 }
